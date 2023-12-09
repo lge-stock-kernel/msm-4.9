@@ -150,7 +150,8 @@ CONFIG_QCOM_VOWIFI_11R := y
 CONFIG_WLAN_FEATURE_ACTION_OUI := y
 
 #Flag to enable FILS Feature (11ai)
-CONFIG_WLAN_FEATURE_FILS := y
+#don't use it in lge devices. it is not verified yet
+#CONFIG_WLAN_FEATURE_FILS := y
 ifneq ($(CONFIG_QCA_CLD_WLAN),)
 	ifeq (y,$(findstring y,$(CONFIG_CNSS) $(CONFIG_CNSS2) $(CONFIG_ICNSS)))
 	#Flag to enable Protected Management Frames (11w) feature
