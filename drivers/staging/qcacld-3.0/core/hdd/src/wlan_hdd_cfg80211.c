@@ -13737,7 +13737,9 @@ int wlan_hdd_cfg80211_init(struct device *dev,
 	    || pCfg->isEseIniFeatureEnabled
 #endif
 	    ) {
-		wiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
+	        // LGE_CHANGE_S, Do not use SUPPORTS_FW_ROAM because we support BSSID selection by framework
+		//wiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
+		// LGE_CHANGE_E, Do not use SUPPORTS_FW_ROAM because we support BSSID selection by framework
 	}
 #ifdef FEATURE_WLAN_TDLS
 	wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS
@@ -19699,7 +19701,6 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 	hdd_context_t *pHddCtx;
 	QDF_STATUS qdf_status = QDF_STATUS_E_FAILURE;
 	hdd_hostapd_state_t *hapd_state;
-	int status;
 	uint8_t staId;
 	uint8_t *mac;
 
@@ -19720,10 +19721,11 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 			 pAdapter->sessionId, pAdapter->device_mode));
 
 	pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
-	status = wlan_hdd_validate_context(pHddCtx);
 
-	if (0 != status)
-		return status;
+	if (!pHddCtx) {
+		hdd_err("pHddCtx is NULL");
+		return -EINVAL;
+	}
 
 	mac = (uint8_t *) pDelStaParams->peerMacAddr.bytes;
 

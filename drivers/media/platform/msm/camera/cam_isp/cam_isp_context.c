@@ -1218,7 +1218,7 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 		ctx_isp->substate_activated);
 	req_isp = (struct cam_isp_ctx_req *) req->req_priv;
 
-	if (ctx_isp->active_req_cnt >=  2) {
+	if (ctx_isp->active_req_cnt >= 4 ) { /* LGE_CHANGE CN03462622 Fix 240fps frame drop. Change active_req_cnt from 2 to 4 because QC FIFO size is 4. 2018-05-17 sungmin.cho@lge.com */
 		CAM_ERR_RATE_LIMIT(CAM_ISP,
 			"Reject apply request (id %lld) due to congestion(cnt = %d)",
 			req->request_id,

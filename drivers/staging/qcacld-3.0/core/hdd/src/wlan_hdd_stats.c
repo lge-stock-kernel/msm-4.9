@@ -3056,8 +3056,8 @@ static void wlan_hdd_fill_summary_stats(tCsrSummaryStatsInfo *stats,
  *
  * Return: errno
  */
-static int
-wlan_hdd_get_sap_stats(hdd_adapter_t *adapter, struct station_info *info)
+int
+wlan_hdd_get_sap_stats(hdd_adapter_t *adapter, struct station_info *info)  //LGE_PATCH : remove static
 {
 	QDF_STATUS status;
 
@@ -3068,6 +3068,9 @@ wlan_hdd_get_sap_stats(hdd_adapter_t *adapter, struct station_info *info)
 	}
 
 	wlan_hdd_fill_summary_stats(&adapter->hdd_stats.summary_stat, info);
+
+//LGE_PATCH
+        hdd_err("[LGE] %s()::TxPKT=%d, TxReTryPKT=%d, TxDropPKT=%d, RxPKT=%d", __func__, info->tx_packets, info->tx_retries, info->tx_failed, info->rx_packets);
 
 	return 0;
 }
@@ -4569,6 +4572,12 @@ static int __wlan_hdd_cfg80211_get_station(struct wiphy *wiphy,
 		     &sinfo->txrate, sizeof(sinfo->txrate));
 	qdf_mem_copy(&pHddStaCtx->cache_conn_info.txrate,
 		     &sinfo->txrate, sizeof(sinfo->txrate));
+
+#ifdef FEATURE_SUPPORT_LGE
+        hdd_err("[LGE] SNR = %d, RSSI = %d, TxPKT=%d, TxReTryPKT=%d, TxDropPKT=%d, RxPKT=%d",
+        pAdapter->hdd_stats.summary_stat.snr, pAdapter->hdd_stats.summary_stat.rssi,
+        sinfo->tx_packets, sinfo->tx_retries, sinfo->tx_failed, sinfo->rx_packets);
+#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)) && !defined(WITH_BACKPORTS)
 	sinfo->filled |= STATION_INFO_TX_BITRATE |

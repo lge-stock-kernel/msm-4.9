@@ -464,7 +464,7 @@ static int __hdd_netdev_notifier_call(struct notifier_block *nb,
 	}
 
 	if (!dev->ieee80211_ptr) {
-		hdd_debug("ieee80211_ptr is NULL!!!");
+		hdd_err("ieee80211_ptr is NULL!!!");
 		return NOTIFY_DONE;
 	}
 
@@ -476,7 +476,7 @@ static int __hdd_netdev_notifier_call(struct notifier_block *nb,
 	}
 
 	if (hdd_ctx->driver_status == DRIVER_MODULES_CLOSED) {
-		hdd_debug("%s: Driver module is closed", __func__);
+		hdd_err("%s: Driver module is closed", __func__);
 		return NOTIFY_DONE;
 	}
 
@@ -2426,6 +2426,12 @@ int hdd_wlan_start_modules(hdd_context_t *hdd_ctx, hdd_adapter_t *adapter,
 		goto release_lock;
 	}
 	hdd_ctx->start_modules_in_progress = false;
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+	wlan_hdd_set_scan_suppress(0);
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+#endif
+
 	mutex_unlock(&hdd_ctx->iface_change_lock);
 	EXIT();
 	return 0;
@@ -3324,6 +3330,9 @@ static QDF_STATUS hdd_register_interface(hdd_adapter_t *adapter, bool rtnl_held)
 	int ret;
 
 	ENTER();
+// [LGE_CHANGE_S] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
+    hdd_err("hdd_register_interface():Enter(), interface type = %d\n", adapter->wdev.iftype);
+// [LGE_CHANGE_S] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
 
 	if (rtnl_held) {
 		if (strnchr(dev->name, IFNAMSIZ - 1, '%')) {
@@ -4939,6 +4948,22 @@ QDF_STATUS hdd_stop_adapter(hdd_context_t *hdd_ctx, hdd_adapter_t *adapter,
 #endif
 
 		/*
+		 * During vdev destroy, if any STA is in connecting state the
+		 * roam command will be in active queue and thus vdev destroy is
+		 * queued in pending queue. In case STA tries to connect to
+		 * multiple BSSID and fails to connect, due to auth/assoc
+		 * timeouts it may take more than vdev destroy time to get
+		 * completed. On vdev destroy timeout vdev is moved to logically
+		 * deleted state. Once connection is completed, vdev destroy is
+		 * activated and to release the self-peer ref count it try to
+		 * get the ref of the vdev, which fails as vdev is logically
+		 * deleted and this leads to peer ref leak. So before vdev
+		 * destroy is queued abort any STA ongoing connection to avoid
+		 * vdev destroy timeout.
+		 */
+		if (test_bit(SME_SESSION_OPENED, &adapter->event_flags))
+			hdd_abort_ongoing_sta_connection(hdd_ctx);
+		/*
 		 * It is possible that the caller of this function does not
 		 * wish to close the session
 		 */
@@ -4947,6 +4972,11 @@ QDF_STATUS hdd_stop_adapter(hdd_context_t *hdd_ctx, hdd_adapter_t *adapter,
 		break;
 
 	case QDF_SAP_MODE:
+
+        /* Diassociate with all the peers before stop ap post */
+		if (test_bit(SOFTAP_BSS_STARTED, &adapter->event_flags))
+			wlan_hdd_del_station(adapter);
+
 		hdd_ipa_flush(hdd_ctx);
 
 	case QDF_P2P_GO_MODE:
@@ -4976,6 +5006,23 @@ QDF_STATUS hdd_stop_adapter(hdd_context_t *hdd_ctx, hdd_adapter_t *adapter,
 			wlan_hdd_cleanup_remain_on_channel_ctx(adapter);
 
 		hdd_deregister_tx_flow_control(adapter);
+
+		/*
+		 * During vdev destroy, if any STA is in connecting state the
+		 * roam command will be in active queue and thus vdev destroy is
+		 * queued in pending queue. In case STA tries to connect to
+		 * multiple BSSID and fails to connect, due to auth/assoc
+		 * timeouts it may take more than vdev destroy time to get
+		 * completed. On vdev destroy timeout vdev is moved to logically
+		 * deleted state. Once connection is completed, vdev destroy is
+		 * activated and to release the self-peer ref count it try to
+		 * get the ref of the vdev, which fails as vdev is logically
+		 * deleted and this leads to peer ref leak. So before vdev
+		 * destroy is queued abort any STA ongoing connection to avoid
+		 * vdev destroy timeout.
+		 */
+		if (test_bit(SME_SESSION_OPENED, &adapter->event_flags))
+			hdd_abort_ongoing_sta_connection(hdd_ctx);
 
 		mutex_lock(&hdd_ctx->sap_lock);
 		if (test_bit(SOFTAP_BSS_STARTED, &adapter->event_flags)) {
@@ -5226,6 +5273,8 @@ QDF_STATUS hdd_reset_all_adapters(hdd_context_t *hdd_ctx)
 
 			wlansap_cleanup_cac_timer(
 				WLAN_HDD_GET_SAP_CTX_PTR(adapter));
+
+			qdf_atomic_set(&adapter->sessionCtx.ap.acs_in_progress, 0);
 		}
 
 		status = hdd_get_next_adapter(hdd_ctx, adapterNode, &pNext);
@@ -10315,7 +10364,7 @@ int hdd_dbs_scan_selection_init(hdd_context_t *hdd_ctx)
 				* CFG_DBS_SCAN_CLIENTS_MAX));
 
 	if (!numentries) {
-		hdd_debug("Do not send scan_selection_config");
+		hdd_info("Donot send scan_selection_config");
 		return 0;
 	}
 
@@ -12391,7 +12440,9 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 	}
 
 	if (!cds_is_driver_loaded()) {
+#ifdef MODULE //LGE_UPDATE
 		init_completion(&wlan_start_comp);
+#endif //LGE_UPDATE
 		rc = wait_for_completion_timeout(&wlan_start_comp,
 				msecs_to_jiffies(HDD_WLAN_START_WAIT_TIME));
 		if (!rc) {
@@ -12400,7 +12451,9 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 			return ret;
 		}
 
+#ifdef MODULE //LGE_UPDATE
 		hdd_start_complete(0);
+#endif //LGE_UPDATE
 	}
 
 exit:
@@ -12568,7 +12621,9 @@ static ssize_t wlan_boot_cb(struct kobject *kobj,
 			    const char *buf,
 			    size_t count)
 {
-
+// [LGE_CHANGE_S] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
+    pr_err("%s: Wi-Fi Initialization is Triggered()\n", __func__);
+// [LGE_CHANGE_E] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
 	if (wlan_loader->loaded_state) {
 		pr_err("%s: wlan driver already initialized\n", __func__);
 		return -EALREADY;

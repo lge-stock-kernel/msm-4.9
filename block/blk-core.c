@@ -867,6 +867,7 @@ blk_init_allocated_queue(struct request_queue *q, request_fn_proc *rfn,
 
 fail:
 	blk_free_flush_queue(q->fq);
+	q->fq = NULL;
 	return NULL;
 }
 EXPORT_SYMBOL(blk_init_allocated_queue);
@@ -1645,6 +1646,10 @@ void init_request_from_bio(struct request *req, struct bio *bio)
 	if (bio->bi_opf & REQ_RAHEAD)
 		req->cmd_flags |= REQ_FAILFAST_MASK;
 
+#ifdef CONFIG_MACH_LGE
+	if(bio->bi_opf & REQ_PREEMPT)
+		req->cmd_flags |= REQ_PREEMPT;
+#endif
 	req->errors = 0;
 	req->__sector = bio->bi_iter.bi_sector;
 #ifdef CONFIG_PFK

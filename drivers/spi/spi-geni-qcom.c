@@ -156,6 +156,7 @@ struct spi_geni_master {
 	void *ipc;
 	bool shared_se;
 	bool dis_autosuspend;
+	bool cmd_done;
 };
 
 static struct spi_master *get_spi_master(struct device *dev)
@@ -765,8 +766,8 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 			GENI_SE_ERR(mas->ipc, false, NULL,
 			"%s: Error %d pinctrl_select_state\n", __func__, ret);
 	}
-
 	ret = pm_runtime_get_sync(mas->dev);
+
 	if (ret < 0) {
 		dev_err(mas->dev, "%s:Error enabling SE resources %d\n",
 							__func__, ret);
@@ -903,6 +904,7 @@ static int spi_geni_unprepare_transfer_hardware(struct spi_master *spi)
 		pm_runtime_mark_last_busy(mas->dev);
 		pm_runtime_put_autosuspend(mas->dev);
 	}
+
 	return 0;
 }
 
@@ -1065,7 +1067,7 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 {
 	int ret = 0;
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
-	unsigned long timeout;
+	long timeout;
 
 	if ((xfer->tx_buf == NULL) && (xfer->rx_buf == NULL)) {
 		dev_err(mas->dev, "Invalid xfer both tx rx are NULL\n");
@@ -1272,7 +1274,7 @@ static irqreturn_t geni_spi_irq(int irq, void *dev)
 
 		if ((m_irq & M_CMD_DONE_EN) || (m_irq & M_CMD_CANCEL_EN) ||
 			(m_irq & M_CMD_ABORT_EN)) {
-			complete(&mas->xfer_done);
+			mas->cmd_done = true;
 			/*
 			 * If this happens, then a CMD_DONE came before all the
 			 * buffer bytes were sent out. This is unusual, log this
@@ -1312,12 +1314,16 @@ static irqreturn_t geni_spi_irq(int irq, void *dev)
 		if (dma_rx_status & RX_DMA_DONE)
 			mas->rx_rem_bytes = 0;
 		if (!mas->tx_rem_bytes && !mas->rx_rem_bytes)
-			complete(&mas->xfer_done);
+			mas->cmd_done = true;
 		if ((m_irq & M_CMD_CANCEL_EN) || (m_irq & M_CMD_ABORT_EN))
-			complete(&mas->xfer_done);
+			mas->cmd_done = true;
 	}
 exit_geni_spi_irq:
 	geni_write_reg(m_irq, mas->base, SE_GENI_M_IRQ_CLEAR);
+	if (mas->cmd_done) {
+		mas->cmd_done = false;
+		complete(&mas->xfer_done);
+	}
 	return IRQ_HANDLED;
 }
 

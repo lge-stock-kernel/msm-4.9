@@ -37,7 +37,7 @@ endif
 # Make WLAN as open-source driver by default
 WLAN_OPEN_SOURCE := 1
 
-ifeq ($(KERNEL_BUILD), 0)
+ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
 
@@ -131,7 +131,8 @@ ifeq ($(KERNEL_BUILD), 0)
 
 	ifneq ($(CONFIG_ARCH_SDX20), y)
 	#Flag to enable FILS Feature (11ai)
-	CONFIG_WLAN_FEATURE_FILS := y
+#	don't use it in lge devices. it is not verified yet
+#	CONFIG_WLAN_FEATURE_FILS := y
 	endif
 
 	ifneq ($(CONFIG_QCA_CLD_WLAN),)
@@ -289,13 +290,7 @@ BUILD_DEBUG_VERSION := 1
 BUILD_DIAG_VERSION := 1
 
 #Do we panic on bug?  default is to warn
-ifeq ($(CONFIG_SLUB_DEBUG), y)
-	PANIC_ON_BUG := 1
-else ifeq ($(CONFIG_PERF_DEBUG), y)
-	PANIC_ON_BUG := 1
-else
-	PANIC_ON_BUG := 0
-endif
+PANIC_ON_BUG := 1
 
 #Enable OL debug and wmi unified functions
 CONFIG_ATH_PERF_PWR_OFFLOAD := 1
@@ -1957,6 +1952,9 @@ TIMESTAMP = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_TAG = "$(TIMESTAMP); cld:$(CLD_IDS); cmn:$(CMN_IDS);"
 CDEFINES += -DBUILD_TAG=\"$(BUILD_TAG)\"
 endif
+
+# support LGE feature
+CDEFINES += -DFEATURE_SUPPORT_LGE
 
 # Module information used by KBuild framework
 obj-$(CONFIG_QCA_CLD_WLAN) += $(MODNAME).o

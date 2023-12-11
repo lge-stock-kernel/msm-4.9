@@ -2634,8 +2634,10 @@ static int cam_ife_csid_sof_irq_debug(
 	if (*((uint32_t *)cmd_args) == 1)
 		sof_irq_enable = true;
 
-	val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-			csid_reg->ipp_reg->csid_ipp_irq_mask_addr);
+	if (csid_reg->ipp_reg) { /* LGE_CHANGE, Fix kernel crash during ITS test_raw_exposure test case(CN03774278). sungmin.cho@lge.com 2018-11-28 */
+		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+				csid_reg->ipp_reg->csid_ipp_irq_mask_addr);
+	} /* LGE_CHANGE, Fix kernel crash during ITS test_raw_exposure test case(CN03774278). sungmin.cho@lge.com 2018-11-28 */
 
 	if (val) {
 		if (sof_irq_enable)

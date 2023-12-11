@@ -3254,6 +3254,10 @@ static __iw_softap_setparam(struct net_device *dev,
 
 	ENTER_DEV(dev);
 
+// [LGE_CHANGE_S] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+	hdd_err("__iw_softap_setparam() : Cmd : %d", sub_cmd);
+// [LGE_CHANGE_E] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+
 	hdd_ctx = WLAN_HDD_GET_CTX(pHostapdAdapter);
 	ret = wlan_hdd_validate_context(hdd_ctx);
 	if (0 != ret)
@@ -3376,6 +3380,23 @@ static __iw_softap_setparam(struct net_device *dev,
 		ret = wma_cli_set_command(pHostapdAdapter->sessionId,
 					  WMA_VDEV_TXRX_FWSTATS_ENABLE_CMDID,
 					  set_value, VDEV_CMD);
+// [LGE_CHANGE_S] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+#ifdef FEATURE_SUPPORT_LGE
+        ret = wma_cli_set_command(pHostapdAdapter->sessionId,
+                      WMA_VDEV_TXRX_FWSTATS_RESET_CMDID,
+                      set_value, VDEV_CMD);
+        {
+extern int wlan_hdd_get_sap_stats(hdd_adapter_t *adapter, struct station_info *info);
+
+            hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
+            struct station_info info;
+
+            if (pAdapter->device_mode == QDF_SAP_MODE) {
+                wlan_hdd_get_sap_stats(pAdapter, &info);
+            }
+        }
+#endif
+// [LGE_CHANGE_E] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
 		break;
 	}
 	/* Firmware debug log */
@@ -5754,7 +5775,8 @@ __iw_get_peer_rssi(struct net_device *dev, struct iw_request_info *info,
 			hdd_err("String to Hex conversion Failed");
 	}
 
-	ret = wlan_hdd_get_peer_rssi(adapter, &macaddress);
+	ret = wlan_hdd_get_peer_rssi(adapter, &macaddress,
+				     HDD_WLAN_GET_PEER_RSSI_SOURCE_USER);
 	if (ret) {
 		hdd_err("Unable to retrieve peer rssi: %d", ret);
 		return ret;
@@ -7966,7 +7988,6 @@ int wlan_hdd_cfg80211_start_bss(hdd_adapter_t *pHostapdAdapter,
 	enum dfs_mode mode;
 	bool disable_fw_tdls_state = false;
 	uint8_t ignore_cac = 0;
-	hdd_adapter_t *sta_adapter;
 
 	ENTER();
 
@@ -8000,12 +8021,7 @@ int wlan_hdd_cfg80211_start_bss(hdd_adapter_t *pHostapdAdapter,
 	 * disconnect the STA interface first if connection or key exchange is
 	 * in progress and then start SAP interface.
 	 */
-	sta_adapter = hdd_get_sta_connection_in_progress(pHddCtx);
-	if (sta_adapter) {
-		hdd_debug("Disconnecting STA with session id: %d",
-			  sta_adapter->sessionId);
-		wlan_hdd_disconnect(sta_adapter, eCSR_DISCONNECT_REASON_DEAUTH);
-	}
+	hdd_abort_ongoing_sta_connection(pHddCtx);
 
 	/*
 	 * Reject start bss if reassoc in progress on any adapter.
@@ -8720,12 +8736,7 @@ static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 	 * the STA and complete the SAP operation. STA will reconnect
 	 * after SAP stop is done.
 	 */
-	staAdapter = hdd_get_sta_connection_in_progress(pHddCtx);
-	if (staAdapter) {
-		hdd_debug("Disconnecting STA with session id: %d",
-			  staAdapter->sessionId);
-		wlan_hdd_disconnect(staAdapter, eCSR_DISCONNECT_REASON_DEAUTH);
-	}
+	hdd_abort_ongoing_sta_connection(pHddCtx);
 
 	if (pAdapter->device_mode == QDF_SAP_MODE) {
 		wlan_hdd_del_station(pAdapter);

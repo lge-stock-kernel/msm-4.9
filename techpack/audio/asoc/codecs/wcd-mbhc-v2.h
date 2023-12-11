@@ -592,6 +592,14 @@ struct wcd_mbhc {
 
 	struct wcd_mbhc_fn *mbhc_fn;
 	bool force_linein;
+#ifdef CONFIG_MACH_LGE
+	struct extcon_dev *edev;
+	char edev_name[15];
+	bool LGE_HIGH_HPH_HEADSET;
+#if defined(CONFIG_SND_LGE_VOC_MUTE_DET)
+    struct extcon_dev* edev_voc_mute;
+#endif /* CONFIG_SND_LGE_VOC_MUTE_DET */
+#endif
 };
 
 void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
