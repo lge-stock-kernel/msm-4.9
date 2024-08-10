@@ -165,6 +165,16 @@
 		};
 	};
 
+	rpm-regulator-ldoa4 {
+		status = "okay";
+		pm8953_l4: regulator-l4 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
+			status = "okay";
+		};
+	};
+
 	rpm-regulator-ldoa5 {
 		status = "okay";
 		pm8953_l5: regulator-l5 {
@@ -264,6 +274,26 @@
 		};
 	};
 
+	rpm-regulator-ldoa14 {
+		status = "okay";
+		pm8953_l14: regulator-l14 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
+			status = "okay";
+		};
+	};
+
+	rpm-regulator-ldoa15 {
+		status = "okay";
+		pm8953_l15: regulator-l15 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
+			status = "okay";
+		};
+	};
+
 	rpm-regulator-ldoa16 {
 		status = "okay";
 		pm8953_l16: regulator-l16 {
@@ -280,6 +310,16 @@
 			regulator-min-microvolt = <2850000>;
 			regulator-max-microvolt = <2850000>;
 			qcom,init-voltage = <2850000>;
+			status = "okay";
+		};
+	};
+
+	rpm-regulator-ldoa18 {
+		status = "okay";
+		pm8953_l18: regulator-l18 {
+			regulator-min-microvolt = <2700000>;
+			regulator-max-microvolt = <2700000>;
+			qcom,init-voltage = <2700000>;
 			status = "okay";
 		};
 	};

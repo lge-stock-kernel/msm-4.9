@@ -29,9 +29,21 @@ $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codec
 include $(MY_LOCAL_PATH)/asoc/codecs/msm_bg/Android.mk
 endif
 
+# CS35L41
+ifeq ($(LGE_AUDIO_KERNEL_CS35L41),true)
+$(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/cs35l41/Module.symvers)
+include $(MY_LOCAL_PATH)/asoc/codecs/cs35l41/Android.mk
+$(info LGE_AUDIO_KERNEL_CS35L41 is true in audio-kernel's android.mk)
+endif
+
 ifeq ($(call is-board-platform-in-list,msm8953 msm8937 sdm710 qcs605 msm8909),true)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/sdm660_cdc/Module.symvers)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/msm_sdw/Module.symvers)
 include $(MY_LOCAL_PATH)/asoc/codecs/sdm660_cdc/Android.mk
 include $(MY_LOCAL_PATH)/asoc/codecs/msm_sdw/Android.mk
+endif
+
+ifeq ($(LGE_HAL_AUDIO_TAS2562),true)
+$(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/tas2562/Module.symvers)
+include $(MY_LOCAL_PATH)/asoc/codecs/tas2562/Android.mk
 endif

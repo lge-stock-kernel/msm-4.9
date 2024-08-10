@@ -1,0 +1,176 @@
+/*
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8917-mh5lm_common/msm8917-mh5lm_common-pinctrl.dtsi"
+
+&soc {
+    gpio_keys {
+        compatible = "gpio-keys";
+        input-name = "gpio-keys";
+        label = "gpio-keys";
+        pinctrl-names = "default";
+        pinctrl-0 = <&gpio_key_active>;
+
+        camera_focus {
+            label = "camera_focus";
+            gpios = <&tlmm 128 0x1>;
+            linux,input-type = <1>;
+            linux,code = <0x210>;
+            debounce-interval = <15>;
+            linux,can-disable;
+            gpio-key,wakeup;
+        };
+
+        camera_snapshot {
+            label = "camera_snapshot";
+            gpios = <&tlmm 127 0x1>;
+            linux,input-type = <1>;
+            linux,code = <0x2fe>;
+            debounce-interval = <15>;
+            linux,can-disable;
+            gpio-key,wakeup;
+        };
+
+        vol_up {
+            label = "volume_up";
+            gpios = <&tlmm 91 0x1>;
+            linux,input-type = <1>;
+            linux,code = <115>;
+            debounce-interval = <15>;
+            linux,can-disable;
+            gpio-key,wakeup;
+        };
+
+        hot1_key {
+            label = "hot1_key";
+            gpios = <&tlmm 126 0x1>;
+            linux,input-type = <1>;
+            linux,code = <377>;
+            debounce-interval = <15>;
+            linux,can-disable;
+            gpio-key,wakeup;
+        };
+    };
+};
+
+&tlmm {
+	compatible = "qcom,msm8917-pinctrl";
+	reg = <0x1000000 0x300000>;
+	reg-names = "pinctrl_regs";
+	interrupts-extended = <&wakegic GIC_SPI 208 IRQ_TYPE_NONE>;
+	gpio-controller;
+	#gpio-cells = <2>;
+	interrupt-controller;
+	interrupt-parent = <&wakegpio>;
+	#interrupt-cells = <2>;
+	
+	
+	tps61280 {
+        tps61280_chip_enable_active: tps61280_chip_enable_active {
+            mux {
+                    pins = "gpio96";
+                    function = "gpio";
+                };
+
+            config {
+                    pins = "gpio96";
+                    drive-strength = <2>; /* 2 mA */
+                    bias-pull-up; /* pull up*/
+					output-high;
+                    };
+            };
+
+        tps61280_chip_enable_sleep: tps61280_chip_enable_sleep {
+            mux {
+                    pins = "gpio96";
+                    function = "gpio";
+                };
+
+            config {
+                    pins = "gpio96";
+                    drive-strength = <2>; /* 2 mA */
+                    bias-pull-down; /* pull down*/
+                };
+        };
+    };
+
+	fingerprint_id_default: msm_gpio_25 {
+		mux {
+			pins = "gpio25";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio25";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	tlmm_gpio_key {
+		gpio_key_active: gpio_key_active {
+			mux {
+				pins = "gpio91", "gpio126", "gpio127", "gpio128";
+			};
+
+			config {
+				pins = "gpio91", "gpio126", "gpio127", "gpio128";
+			};
+		};
+		gpio_key_suspend: gpio_key_suspend {
+			mux {
+				pins = "gpio91", "gpio126", "gpio127", "gpio128";
+			};
+
+			config {
+				pins = "gpio91", "gpio126", "gpio127", "gpio128";
+			};
+		};
+	};
+	atmf04_int_pin {
+		pins = "gpio46";
+		qcom,num-grp-pins = <1>;
+		qcom,pin-func = <0>;
+		label = "atmf04_int_pin";
+		atmf04_int_active: atmf04_int_active {
+			drive-strength = <6>;   /* 6 MA */
+			bias-pull-up;           /* PULL UP*/
+		};
+		atmf04_int_suspend: atmf04_int_suspend {
+			drive-strength = <6>;   /* 6 MA */
+			bias-pull-up;           /* PULL UP */
+		};
+
+		pmx_mdss {
+			mdss_dsi_active: mdss_dsi_active {
+				mux {
+					pins = "gpio33";
+				};
+
+				config {
+					pins = "gpio33";
+				};
+			};
+
+			mdss_dsi_suspend: mdss_dsi_suspend {
+				mux {
+					pins = "gpio33";
+				};
+
+				config {
+					pins = "gpio33";
+				};
+			};
+		};
+	};
+};

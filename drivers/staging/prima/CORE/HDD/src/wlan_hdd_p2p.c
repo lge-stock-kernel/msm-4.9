@@ -1510,7 +1510,8 @@ int __wlan_hdd_mgmt_tx( struct wiphy *wiphy, struct net_device *dev,
                      actionFrmType == WLAN_HDD_GO_NEG_RESP )
                    wait = wait + ACTION_FRAME_RSP_WAIT;
                 else if ( actionFrmType == WLAN_HDD_GO_NEG_CNF ||
-                          actionFrmType == WLAN_HDD_INVITATION_RESP )
+                          actionFrmType == WLAN_HDD_INVITATION_RESP ||
+                          actionFrmType == WLAN_HDD_PROV_DIS_RESP)
                    wait = wait + ACTION_FRAME_ACK_WAIT;
 
                 if (!VOS_IS_STATUS_SUCCESS(vos_timer_stop(

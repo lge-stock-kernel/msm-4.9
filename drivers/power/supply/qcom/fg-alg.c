@@ -104,6 +104,34 @@ void clear_cycle_count(struct cycle_counter *counter)
 	mutex_unlock(&counter->lock);
 }
 
+#ifdef CONFIG_LGE_PM
+int set_cycle_count(struct cycle_counter *counter, int count)
+{
+	int rc = 0;
+	int id = 0;
+	u16 cyc_count;
+
+	if (!counter)
+		return -ENODEV;
+
+	cyc_count = (u16)count;
+
+	for (id = 0; id < BUCKET_COUNT; id++) {
+		rc = counter->store_count(counter->data, &cyc_count, id, 2);
+		if (rc < 0) {
+			pr_err("failed to write cycle_count[%d] rc=%d\n",
+				id, rc);
+			return rc;
+		}
+
+		counter->count[id] = cyc_count;
+		pr_err("Set cycle count %d in id %d\n", cyc_count, id);
+	}
+
+	return rc;
+}
+#endif
+
 /**
  * store_cycle_count -
  * @counter: Cycle counter object

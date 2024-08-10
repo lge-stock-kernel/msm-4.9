@@ -30,6 +30,10 @@
 #include <trace/events/exception.h>
 #include <soc/qcom/minidump.h>
 
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+#include <soc/qcom/lge/lge_handle_panic.h>
+#endif
+
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
 
@@ -139,6 +143,11 @@ void panic(const char *fmt, ...)
 	int state = 0;
 	int old_cpu, this_cpu;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
+
+	/* disable watchdog timer to avoid unexpected watchdog bite */
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	lge_disable_watchdog();
+#endif
 
 	trace_kernel_panic(0);
 

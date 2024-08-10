@@ -29,3 +29,7 @@ obj-$(CONFIG_UCSI)			+= ucsi.o
 
 obj-$(CONFIG_USB_SISUSBVGA)		+= sisusbvga/
 obj-$(CONFIG_USB_LINK_LAYER_TEST)	+= lvstest.o
+
+obj-$(CONFIG_USB_QTI_KS_BRIDGE)		+= ks_bridge.o
+
+obj-$(CONFIG_LGE_USB_TUSB422)           += tusb422/

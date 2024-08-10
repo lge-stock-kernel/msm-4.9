@@ -21,11 +21,18 @@
 #include "codecs/wsa881x-analog.h"
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
-
+#include <sound/pcm_params.h>
 
 #define BTSCO_RATE_8KHZ 8000
 #define BTSCO_RATE_16KHZ 16000
 
+#ifdef CONFIG_SND_SOC_HIFI_CTRL
+#define MSM8952_HIFI_ON    1
+#endif
+#define SAMPLING_RATE_8KHZ       8000
+#define SAMPLING_RATE_16KHZ     16000
+#define SAMPLING_RATE_32KHZ     32000
+#define SAMPLING_RATE_44P1KHZ   44100
 #define SAMPLING_RATE_48KHZ     48000
 #define SAMPLING_RATE_96KHZ     96000
 #define SAMPLING_RATE_192KHZ    192000
@@ -62,6 +69,12 @@ struct msm_asoc_mach_data {
 	int ext_pa;
 	int us_euro_gpio;
 	int spk_ext_pa_gpio;
+#ifdef CONFIG_SND_SOC_HIFI_CTRL
+	int hifi_sw_gpio;
+#endif
+#ifdef CONFIG_SND_SOC_HAC_PA
+	int hac_pa_en_gpio;
+#endif
 	int mclk_freq;
 	bool native_clk_set;
 	int lb_mode;
@@ -81,6 +94,10 @@ struct msm_asoc_mach_data {
 	void __iomem *vaddr_gpio_mux_mic_ctl;
 	void __iomem *vaddr_gpio_mux_quin_ctl;
 	void __iomem *vaddr_gpio_mux_pcm_ctl;
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
+	void __iomem *vaddr_gpio_mux_qui_pcm_ctl;
+	void __iomem *vaddr_gpio_mux_quin_ext_ctl;
+#endif
 	struct on_demand_supply wsa_switch_supply;
 	struct device_node *spk_ext_pa_gpio_p;
 	struct device_node *us_euro_gpio_p;

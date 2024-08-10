@@ -134,17 +134,19 @@
 #define SDAM_PAUSE_END_MASK			GENMASK(3, 0)
 
 #define SDAM_LUT_COUNT_MAX			64
-
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 enum lpg_src {
 	LUT_PATTERN = 0,
 	PWM_VALUE,
 };
+#endif
 
 static const int pwm_size[NUM_PWM_SIZE] = {6, 9};
 static const int clk_freq_hz[NUM_PWM_CLK] = {1024, 32768, 19200000};
 static const int clk_prediv[NUM_CLK_PREDIV] = {1, 3, 5, 6};
 static const int pwm_exponent[NUM_PWM_EXP] = {0, 1, 2, 3, 4, 5, 6, 7};
 
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 struct lpg_ramp_config {
 	u16			step_ms;
 	u8			pause_hi_count;
@@ -202,6 +204,28 @@ struct qpnp_lpg_chip {
 	unsigned long		pbs_en_bitmap;
 	bool			use_sdam;
 };
+#endif
+
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+static void qpnp_lpg_pwm_disable(struct pwm_chip *pwm_chip,
+		struct pwm_device *pwm);
+
+struct qpnp_lpg_channel *qpnp_get_lpg_channel(struct pwm_chip *pwm_chip,
+		                                struct pwm_device *pwm)
+{
+	struct qpnp_lpg_chip *chip = container_of(pwm_chip,
+			struct qpnp_lpg_chip, pwm_chip);
+	u32 hw_idx = pwm->hwpwm;
+
+	if (hw_idx >= chip->num_lpgs) {
+		dev_err(chip->dev, "hw index %d out of range [0-%d]\n",
+				hw_idx, chip->num_lpgs - 1);
+		return NULL;
+	}
+
+	return &chip->lpgs[hw_idx];
+}
+#endif
 
 static int qpnp_lpg_read(struct qpnp_lpg_channel *lpg, u16 addr, u8 *val)
 {
@@ -484,6 +508,38 @@ static int qpnp_lpg_set_pwm_config(struct qpnp_lpg_channel *lpg)
 	return rc;
 }
 
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+void qpnp_init_lut_pattern(struct qpnp_lpg_channel *lpg)
+{
+	int i, rc = 0;
+	u8 lsb, msb, addr;
+	u16 pwm_values[LPG_LUT_COUNT_MAX + 1] = {0};
+	struct qpnp_lpg_lut *lut = lpg->chip->lut;
+        
+        mutex_lock(&lut->lock);
+	addr = REG_LPG_LUT_1_LSB;
+	for (i = 0; i <= LPG_LUT_COUNT_MAX; i++) {
+		pwm_values[i] = 0;
+
+		lsb = pwm_values[i] & 0xff;
+		msb = pwm_values[i] >> 8;
+		rc = qpnp_lut_write(lut, addr++, lsb);
+		if (rc < 0) {
+			dev_err(lpg->chip->dev, "Write NO.%d LUT pattern LSB (%d) failed, rc=%d",
+					i, lsb, rc);
+		}
+
+		rc = qpnp_lut_masked_write(lut, addr++,
+				LPG_LUT_VALUE_MSB_MASK, msb);
+		if (rc < 0) {
+			dev_err(lpg->chip->dev, "Write NO.%d LUT pattern MSB (%d) failed, rc=%d",
+					i, msb, rc);
+		}
+	}
+        mutex_unlock(&lut->lock);
+}
+#endif
+
 static int qpnp_lpg_set_sdam_lut_pattern(struct qpnp_lpg_channel *lpg,
 		unsigned int *pattern, unsigned int length)
 {
@@ -501,8 +557,11 @@ static int qpnp_lpg_set_sdam_lut_pattern(struct qpnp_lpg_channel *lpg,
 	mutex_lock(&lut->lock);
 	addr = lpg->ramp_config.lo_idx;
 	for (i = 0; i < length; i++)
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+		val[i] = pattern[i];
+#else
 		val[i] = pattern[i] * 255 / 100;
-
+#endif
 	rc = qpnp_lut_sdam_write(lut, addr, val, length);
 	if (rc < 0) {
 		dev_err(lpg->chip->dev, "Write pattern in SDAM failed, rc=%d",
@@ -600,7 +659,11 @@ static int qpnp_lpg_set_lut_pattern(struct qpnp_lpg_channel *lpg,
 	addr = REG_LPG_LUT_1_LSB + lpg->ramp_config.lo_idx * 2;
 	for (i = 0; i < length; i++) {
 		full_duty_value = 1 << lpg->pwm_config.pwm_size;
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+		pwm_values[i] = pattern[i] * full_duty_value / 255;
+#else
 		pwm_values[i] = pattern[i] * full_duty_value / 100;
+#endif
 
 		if (unlikely(pwm_values[i] > full_duty_value)) {
 			dev_err(lpg->chip->dev, "PWM value %d exceed the max %d\n",
@@ -712,6 +775,12 @@ static int qpnp_lpg_set_ramp_config(struct qpnp_lpg_channel *lpg)
 		val |= LPG_PATTERN_REPEAT;
 	if (ramp->toggle)
 		val |= LPG_PATTERN_RAMP_TOGGLE;
+
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	pr_err("%s: val=%d, step_ms=%d, hi_idx=%d, lo_idx=%d, pause_hi_cnt=%d, pause_lo_cnt=%d\n",
+			__func__, val,
+			ramp->step_ms, ramp->hi_idx, ramp->lo_idx,  ramp->pause_hi_count, ramp->pause_lo_count);
+#endif
 
 	rc = qpnp_lpg_masked_write(lpg, addr, mask, val);
 	if (rc < 0) {
@@ -1001,7 +1070,9 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 	struct qpnp_lpg_channel *lpg;
 	enum lpg_src src_sel;
 	int rc;
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 	bool is_enabled;
+#endif
 
 	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
 	if (lpg == NULL) {
@@ -1016,6 +1087,11 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 
 	src_sel = (output_type == PWM_OUTPUT_MODULATED) ?
 				LUT_PATTERN : PWM_VALUE;
+
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	if ((src_sel == lpg->src_sel) && (src_sel == PWM_VALUE))
+		return 0;
+#else
 	if (src_sel == lpg->src_sel)
 		return 0;
 
@@ -1035,7 +1111,7 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 			return rc;
 		}
 	}
-
+#endif
 	if (src_sel == LUT_PATTERN) {
 		/* program LUT if it's never been programmed */
 		if (!lpg->lut_written) {
@@ -1060,6 +1136,20 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 
 	lpg->src_sel = src_sel;
 
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	if ((src_sel == lpg->src_sel) && (src_sel == LUT_PATTERN)) {
+		qpnp_lpg_pwm_disable(pwm_chip, pwm);
+	} else {
+		if (pwm_is_enabled(pwm)) {
+			rc = qpnp_lpg_pwm_src_enable(lpg, true);
+			if (rc < 0) {
+				dev_err(pwm_chip->dev, "Enable PWM output failed for channel %d, rc=%d\n",
+						lpg->lpg_idx, rc);
+				return rc;
+			}
+		}
+	}
+#else
 	if (is_enabled) {
 		rc = qpnp_lpg_set_pwm_config(lpg);
 		if (rc < 0) {
@@ -1075,6 +1165,7 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 			return rc;
 		}
 	}
+#endif
 
 	return 0;
 }
@@ -1263,7 +1354,11 @@ static void qpnp_lpg_pwm_dbg_show(struct pwm_chip *pwm_chip, struct seq_file *s)
 		if (pwm_get_output_type(pwm) == PWM_OUTPUT_MODULATED) {
 			seq_puts(s, "  ramping duty percentages:");
 			for (j = 0; j < ramp->pattern_length; j++)
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+				seq_printf(s, " %d", ramp->pattern[j+ramp->lo_idx]);
+#else
 				seq_printf(s, " %d", ramp->pattern[j]);
+#endif
 			seq_puts(s, "\n");
 			seq_printf(s, "  ramping time per step: %dms\n",
 					ramp->step_ms);

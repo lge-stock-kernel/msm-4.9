@@ -1,0 +1,331 @@
+#include <linux/delay.h>
+#include "mdss_dsi.h"
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+#define EXT_DSV_PRIVILEGED
+#include <linux/mfd/external_dsv.h>
+#endif
+
+#include <linux/input/lge_touch_notify_oos.h>
+
+extern bool flag_panel_deep_sleep_ctrl;
+extern bool flag_panel_deep_sleep_status;
+
+extern int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata, bool active);
+
+int sw43103_mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
+{
+	int ret = 0;
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	pr_info("%s: + (override: smallpd)\n", __func__);
+
+	if (pdata->panel_info.cont_splash_enabled) {
+		/*
+		 * Vote for vreg due to unbalanced regulator disable
+		 */
+		ret = msm_mdss_enable_vreg(
+			ctrl_pdata->panel_power_data.vreg_config,
+			ctrl_pdata->panel_power_data.num_vreg, 1);
+		if (ret) {
+			pr_err("%s: failed to enable vregs for %s\n",
+				__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+			return ret;
+		}
+	} else {// if (lge_mdss_dsi_panel_power_seq_all()) {
+		lge_extra_gpio_set_value(ctrl_pdata, "dsv_en", 0);
+		pr_err("%s: dsv_en on.\n",__func__);
+		usleep_range(1000, 1000);
+		ret = msm_mdss_enable_vreg(
+			ctrl_pdata->panel_power_data.vreg_config,
+			ctrl_pdata->panel_power_data.num_vreg, 1);
+		if (ret) {
+			pr_err("%s: failed to enable vregs for %s\n",
+				__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+			return ret;
+		}
+		//usleep_range(12000, 12000);
+		lge_extra_gpio_set_value(ctrl_pdata, "vddio_en", 1);
+		pr_err("%s: vddio_en on.\n",__func__);
+		usleep_range(2000, 2000);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+		lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsp_en", 1);
+		usleep_range(5000, 5000);
+		lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsn_en", 1);
+		usleep_range(2000, 2000);
+		ext_dsv_mode_change(POWER_ON);
+#endif
+	}
+
+	/*
+	 * If continuous splash screen feature is enabled, then we need to
+	 * request all the GPIOs that have already been configured in the
+	 * bootloader. This needs to be done irresepective of whether
+	 * the lp11_init flag is set or not.
+	 */
+	if (pdata->panel_info.cont_splash_enabled ||
+		!pdata->panel_info.mipi.lp11_init) {
+		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
+			pr_debug("reset enable: pinctrl not enabled\n");
+
+		ret = mdss_dsi_panel_reset(pdata, 1);
+		if (ret)
+			pr_err("%s: Panel reset failed. rc=%d\n",
+					__func__, ret);
+	}
+
+	pr_info("%s: -\n", __func__);
+	return ret;
+}
+
+int sw43103_mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
+{
+	int ret = 0;
+
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	pr_info("%s: + (override: smallpd)\n", __func__);
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	if (!ctrl_pdata->lge_extra.lp11_off) {
+		ret = mdss_dsi_panel_reset(pdata, 0);
+	}
+#else
+	ret = mdss_dsi_panel_reset(pdata, 0);
+#endif
+
+	if (ret) {
+		pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
+		ret = 0;
+	}
+
+	if (mdss_dsi_pinctrl_set_state(ctrl_pdata, false))
+		pr_debug("reset disable: pinctrl not enabled\n");
+
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+	if (lge_mdss_dsi_panel_power_seq_all()) {
+		if (ret)
+			pr_err("%s: failed to disable vregs for %s\n",
+				__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+
+		ext_dsv_mode_change(POWER_OFF);
+		lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsn_en", 0);
+		usleep_range(2000, 2000);
+		lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsp_en", 0);
+		usleep_range(2000, 2000);
+	}
+#endif
+	lge_extra_gpio_set_value(ctrl_pdata, "vddio_en", 0);
+	usleep_range(2000, 2000);
+	ret = msm_mdss_enable_vreg(
+		ctrl_pdata->panel_power_data.vreg_config,
+		ctrl_pdata->panel_power_data.num_vreg, 0);
+	if (ret)
+		pr_err("%s: failed to disable vregs for %s\n",
+			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+	lge_extra_gpio_set_value(ctrl_pdata, "dsv_en", 1);
+	usleep_range(2000, 2000);
+
+	pr_info("%s: -\n", __func__);
+	return ret;
+}
+
+void sw43103_panel_enter_deep_sleep(void)
+{
+	struct mdss_dsi_ctrl_pdata *pdata = NULL;
+
+	if (flag_panel_deep_sleep_ctrl) {
+		pdata = lge_mdss_dsi_get_ctrl_pdata();
+		if (pdata == NULL)
+			return;
+
+		lge_extra_gpio_set_value(pdata, "vddio_en", 0);
+		usleep_range(4000, 4000);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+		ext_dsv_mode_change(POWER_OFF);
+		lge_extra_gpio_set_value(pdata, "dsv_vsn_en", 0);
+		usleep_range(2000, 2000);
+		lge_extra_gpio_set_value(pdata, "dsv_vsp_en", 0);
+		usleep_range(4000, 4000);
+#endif
+		flag_panel_deep_sleep_status = true;
+		pr_info("%s done \n", __func__);
+	}
+}
+
+void sw43103_panel_exit_deep_sleep(void)
+{
+	struct mdss_dsi_ctrl_pdata *pdata = NULL;
+
+	if (flag_panel_deep_sleep_ctrl) {
+		pdata = lge_mdss_dsi_get_ctrl_pdata();
+		if (pdata == NULL)
+			return;
+
+		mdss_dsi_clk_ctrl(pdata, pdata->dsi_clk_handle, MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_ON);
+		mdss_dsi_sw_reset(pdata, true);
+
+		usleep_range(12000, 12000);
+
+		lge_extra_gpio_set_value(pdata, "vddio_en", 1);
+		usleep_range(2000, 2000);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+		lge_extra_gpio_set_value(pdata, "dsv_vsp_en", 1);
+		usleep_range(5000, 5000);
+		lge_extra_gpio_set_value(pdata, "dsv_vsn_en", 1);
+		usleep_range(2000, 2000);
+		ext_dsv_mode_change(POWER_ON);
+#endif
+		usleep_range(12000, 12000);
+
+		lge_extra_gpio_set_value(pdata, "touch_reset", 0);
+		usleep_range(1000, 1000);
+		gpio_set_value((pdata->rst_gpio), 0);
+		usleep_range(2000, 2000);
+
+		gpio_set_value((pdata->rst_gpio), 1);
+		usleep_range(1000, 1000);
+
+		lge_extra_gpio_set_value(pdata, "touch_reset", 1);
+		usleep_range(10000, 10000);
+
+		lge_mdss_dsi_panel_extra_cmds_send(pdata, "lpwg-on");
+
+		mdss_dsi_clk_ctrl(pdata, pdata->dsi_clk_handle, MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_OFF);
+
+		flag_panel_deep_sleep_status = false;
+
+		pr_info("%s done \n", __func__);
+	}
+}
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_OVERRIDE_MDSS_DSI_CTRL_SHUTDOWN)
+extern int mdss_dsi_set_clk_src(struct mdss_dsi_ctrl_pdata *ctrl);
+void sw43103_mdss_dsi_ctrl_shutdown(struct platform_device *pdev)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = platform_get_drvdata(pdev);
+	int ret = 0;
+
+	if (!ctrl_pdata) {
+		pr_err("%s: no driver data\n", __func__);
+		return;
+	}
+
+	ret += mdss_dsi_set_clk_src(ctrl_pdata);
+	ret += mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
+			MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_ON);
+	if (ret) {
+		pr_err("%s: could fail to set LP11\n", __func__);
+	}
+	usleep_range(5000, 5000);
+
+	lge_extra_gpio_set_value(ctrl_pdata, "touch_reset", 0);
+	usleep_range(2000, 2000);
+
+	gpio_set_value((ctrl_pdata->rst_gpio), 0);
+
+	ret += mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
+		MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_OFF);
+	if (ret) {
+		pr_err("%s: could fail to set LP00\n", __func__);
+	}
+	lge_extra_gpio_set_value(ctrl_pdata, "vddio_en", 0);
+	usleep_range(2000, 2000);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_EXTERNAL_DSV)
+	ext_dsv_mode_change(POWER_OFF);
+	lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsn_en", 0);
+	usleep_range(2000, 2000);
+	lge_extra_gpio_set_value(ctrl_pdata, "dsv_vsp_en", 0);
+	usleep_range(4000, 4000);
+#endif
+	ret = msm_mdss_enable_vreg(
+		ctrl_pdata->panel_power_data.vreg_config,
+		ctrl_pdata->panel_power_data.num_vreg, 0);
+	if (ret)
+		pr_err("%s: failed to disable vregs for %s\n",
+			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
+
+	pr_info("%s: panel shutdown done \n", __func__);
+
+	return;
+}
+#endif
+
+int sw43103_mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	struct mdss_panel_info *pinfo = NULL;
+	int  rc = 0;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	pinfo = &(ctrl_pdata->panel_data.panel_info);
+
+	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
+		pr_debug("%s:%d, reset line not configured\n",
+			   __func__, __LINE__);
+		return rc;
+	}
+
+	pr_info("%s: + enable = %d (override: smallpd)\n", __func__, enable);
+
+	if (enable) {
+		if (!pinfo->cont_splash_enabled) {
+			touch_notifier_call_chain(LCD_EVENT_TOUCH_RESET_START, NULL);
+		/*	for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
+				gpio_set_value((ctrl_pdata->rst_gpio),
+					pdata->panel_info.rst_seq[i]);
+				if (pdata->panel_info.rst_seq[++i])
+					usleep_range(pinfo->rst_seq[i] * 1000, pinfo->rst_seq[i] * 1000);
+			}
+				touch_notifier_call_chain(LCD_EVENT_TOUCH_RESET_END, NULL);*/
+			pr_err("%s: rst_gpio[%d] enable\n", __func__, ctrl_pdata->rst_gpio);
+			gpio_direction_output((ctrl_pdata->rst_gpio), 0);
+			usleep_range(1000, 1000);
+			gpio_direction_output((ctrl_pdata->rst_gpio), 1);
+			touch_notifier_call_chain(LCD_EVENT_TOUCH_RESET_END, NULL);
+		}
+
+		if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
+			pr_debug("%s: Panel Not properly turned OFF\n",
+						__func__);
+			ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
+			pr_debug("%s: Reset panel done\n", __func__);
+		}
+	} else {
+		if (lge_mdss_dsi_panel_power_seq_all()) {
+			touch_notifier_call_chain(LCD_EVENT_TOUCH_RESET_START, NULL);
+			usleep_range(2000, 2000);
+
+			//gpio_set_value((ctrl_pdata->rst_gpio), enable);
+			gpio_direction_output((ctrl_pdata->rst_gpio), 0);
+			usleep_range(2000, 2000);
+		}
+	}
+	pr_info("%s: -\n", __func__);
+
+	return rc;
+}

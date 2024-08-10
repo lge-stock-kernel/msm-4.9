@@ -2237,10 +2237,8 @@ static void hdd_SendReAssocEvent(struct net_device *dev, hdd_adapter_t *pAdapter
         goto done;
     }
 
-    if (pCsrRoamInfo->nAssocRspLength < FT_ASSOC_RSP_IES_OFFSET) {
-
-        hddLog(LOGE, "%s: Invalid assoc response length %d",
-               __func__, pCsrRoamInfo->nAssocRspLength);
+    if (pCsrRoamInfo->nAssocRspLength == 0) {
+        hddLog(LOGE, "%s: Invalid assoc response length", __func__);
         goto done;
     }
 
@@ -2257,11 +2255,6 @@ static void hdd_SendReAssocEvent(struct net_device *dev, hdd_adapter_t *pAdapter
 
     // Send the Assoc Resp, the supplicant needs this for initial Auth.
     len = pCsrRoamInfo->nAssocRspLength - FT_ASSOC_RSP_IES_OFFSET;
-    if (len > IW_GENERIC_IE_MAX) {
-        hddLog(LOGE, "%s: Invalid assoc response length %d",
-                __func__, pCsrRoamInfo->nAssocRspLength);
-         goto done;
-    }
     rspRsnLength = len;
     memcpy(rspRsnIe, pFTAssocRsp, len);
     memset(rspRsnIe + len, 0, IW_GENERIC_IE_MAX - len);
@@ -4400,6 +4393,7 @@ eHalStatus hdd_smeRoamCallback( void *pContext, tCsrRoamInfo *pRoamInfo, tANI_U3
               else
                   hddLog(LOG1, FL("UPDATE_SCAN_RESULT returned NULL"));
          }
+         break;
 
        case eCSR_ROAM_SAE_COMPUTE:
          if (pRoamInfo)

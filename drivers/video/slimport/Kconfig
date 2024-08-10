@@ -1,0 +1,8 @@
+source "drivers/video/slimport/anx7580/Kconfig"
+source "drivers/video/slimport/anx7625/Kconfig"
+
+config SLIMPORT_COMMON
+    tristate "Analogix Slimport transmitter ANX support"
+    help
+      Slimport Transmitter is a video transmitter chip
+      over micro-USB connector for smartphone device.

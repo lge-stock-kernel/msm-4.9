@@ -4594,6 +4594,12 @@ struct asm_softvolume_params {
 
 #define ASM_DATA_CMD_MEDIA_FMT_UPDATE_V2 0x00010D98
 
+#if defined(CONFIG_SND_LGE_NORMALIZER) || defined(CONFIG_SND_LGE_MABL) || defined(CONFIG_SND_LGE_DTS)
+#define ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT_LGE 0x10009009
+#define ASM_STREAM_POSTPROC_TOPO_ID_OFFLOAD_LGE 0x10009010
+#define ASM_STREAM_POSTPROC_TOPO_ID_OFFLOAD_DTS_LGE 0x10009011
+#endif
+
 struct asm_data_cmd_media_fmt_update_v2 {
 u32                    fmt_blk_size;
 	/* Media format block size in bytes.*/

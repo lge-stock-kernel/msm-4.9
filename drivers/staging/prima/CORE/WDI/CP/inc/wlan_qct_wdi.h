@@ -12310,6 +12310,14 @@ WDI_Status WDI_set_vowifi_mode_ind(wpt_boolean enable);
  */
 WDI_Status WDI_set_qpower(uint8_t enable);
 
+/**
+ * WDI_set_low_power_mode_req() - Set OLPC (low power) mode request
+ *
+ * @enable - boolean value that determins the state
+ *
+ * Return: success if the value is sent
+ */
+WDI_Status WDI_set_low_power_mode_req(wpt_boolean enable);
 
 WDI_Status
 WDI_FWLoggingDXEdoneInd

@@ -110,6 +110,8 @@ obj-$(CONFIG_OF)		+= usb/
 obj-$(CONFIG_SERIO)		+= input/serio/
 obj-$(CONFIG_GAMEPORT)		+= input/gameport/
 obj-$(CONFIG_INPUT)		+= input/
+obj-$(CONFIG_STYLUS)		+= stylus/
+obj-$(CONFIG_SWITCH)		+= switch/
 obj-$(CONFIG_RTC_LIB)		+= rtc/
 obj-y				+= i2c/ media/
 obj-$(CONFIG_PPS)		+= pps/
@@ -180,4 +182,20 @@ obj-$(CONFIG_NVMEM)		+= nvmem/
 obj-$(CONFIG_ESOC)              += esoc/
 obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_SENSORS_SSC)		+= sensors/
+
+# LGE_BROADCAST_TDMB
+obj-$(CONFIG_LGE_BROADCAST_TDMB) += broadcast/
+
+# LGE_BROADCAST_ISDBT_JAPAN
+obj-$(CONFIG_LGE_BROADCAST_ISDBT_JAPAN) += broadcast/
+
 obj-$(CONFIG_TEE)		+= tee/
+obj-$(CONFIG_TSPDRV)		+= tspdrv/
+
+# <t-base drivers
+ifeq ($(CONFIG_TRUSTONIC_TEE),y)
+ifneq ($(TARGET_LGE_SPECIFIC_OPERATOR), TRF)
+obj-$(CONFIG_TRUSTONIC_TEE) += gud/
+endif
+endif
+

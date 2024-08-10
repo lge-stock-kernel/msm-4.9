@@ -63,11 +63,17 @@ enum pon_restart_reason {
 	/* 32 ~ 63 for OEMs/ODMs secific features */
 	PON_RESTART_REASON_OEM_MIN		= 0x20,
 	PON_RESTART_REASON_OEM_MAX		= 0x3f,
+	PON_RESTART_REASON_OPID_MISMATCHED	= 0x32,
+    PON_RESTART_REASON_FOTA_LCD_OFF		= 0x0A,
+    PON_RESTART_REASON_FOTA_OUT_LCD_OFF	= 0x0B,
 };
 
 #ifdef CONFIG_INPUT_QPNP_POWER_ON
 int qpnp_pon_system_pwr_off(enum pon_power_off_type type);
 int qpnp_pon_is_warm_reset(void);
+#ifdef CONFIG_LGE_PM_SMPL_COUNTER
+int qpnp_pon_read_poff_sts(void);
+#endif
 int qpnp_pon_trigger_config(enum pon_trigger_source pon_src, bool enable);
 int qpnp_pon_wd_config(bool enable);
 int qpnp_pon_set_restart_reason(enum pon_restart_reason reason);
@@ -79,6 +85,9 @@ static int qpnp_pon_system_pwr_off(enum pon_power_off_type type)
 	return -ENODEV;
 }
 static inline int qpnp_pon_is_warm_reset(void) { return -ENODEV; }
+#ifdef CONFIG_LGE_PM_SMPL_COUNTER
+static inline int qpnp_pon_read_poff_sts(void) { return -ENODEV; }
+#endif
 static inline int qpnp_pon_trigger_config(enum pon_trigger_source pon_src,
 							bool enable)
 {

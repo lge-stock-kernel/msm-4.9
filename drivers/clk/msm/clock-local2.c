@@ -711,7 +711,11 @@ static void branch_clk_halt_check(struct clk *c, u32 halt_check,
 			};
 			udelay(1);
 		}
+#ifdef CONFIG_LGE_USB
+		CLK_WARN(c, count == 0, "status stuck %s %x", status_str,val);
+#else
 		CLK_WARN(c, count == 0, "status stuck %s", status_str);
+#endif
 	}
 }
 

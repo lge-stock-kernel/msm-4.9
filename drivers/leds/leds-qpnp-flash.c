@@ -263,12 +263,30 @@ struct qpnp_flash_led {
 	bool				strobe_debug;
 	bool				dbg_feature_en;
 	bool				open_fault;
+
+#ifdef CONFIG_MACH_LGE
+	struct device	*dev_fault;
+	u8	last_fault;
+#endif
 };
 
 static u8 qpnp_flash_led_ctrl_dbg_regs[] = {
 	0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
 	0x4A, 0x4B, 0x4C, 0x4F, 0x51, 0x52, 0x54, 0x55, 0x5A, 0x5C, 0x5D,
 };
+
+#ifdef CONFIG_MACH_LGE
+extern struct class* get_camera_class(void);
+
+static ssize_t show_flash_fault_status(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct qpnp_flash_led *led = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%x\n", led->last_fault);
+}
+static DEVICE_ATTR(fault_status, S_IRUGO, show_flash_fault_status, NULL);
+#endif
 
 static int flash_led_dbgfs_file_open(struct qpnp_flash_led *led,
 					struct file *file)
@@ -1733,6 +1751,10 @@ static void qpnp_flash_led_work(struct work_struct *work)
 				goto exit_flash_led_work;
 			}
 			led->fault_reg = temp;
+#ifdef CONFIG_MACH_LGE
+		led->last_fault = temp;
+#endif
+		pr_err("flash led_status 0x%x\n", temp);
 		}
 	} else {
 		pr_err("Both Torch and Flash cannot be select at same time\n");
@@ -1766,6 +1788,16 @@ turn_off:
 		}
 
 		led->open_fault |= (val & FLASH_LED_OPEN_FAULT_DETECTED);
+
+#ifdef CONFIG_MACH_LGE
+		dev_err(&led->pdev->dev, "flash led status (0x%x)\n", temp);
+		led->last_fault = temp;
+#endif
+#if 1 //def CONFIG_MACH_LGE
+		if(temp){
+			dev_err(&led->pdev->dev, "Fault detected (0x%x)\n", temp);
+		}
+#endif
 	}
 
 	rc = qpnp_led_masked_write(led,
@@ -2633,6 +2665,15 @@ static int qpnp_flash_led_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(&pdev->dev, led);
+#ifdef CONFIG_MACH_LGE
+	led->last_fault = 0;
+	led->dev_fault = device_create(get_camera_class(), &led->pdev->dev,
+		0, led, "flash_fault_status");
+	rc = sysfs_create_file(&led->dev_fault->kobj,
+			&dev_attr_fault_status.attr);
+	if (rc)
+		pr_err("error creating flash_fault_status\n");
+#endif
 
 	return 0;
 

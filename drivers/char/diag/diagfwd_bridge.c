@@ -29,6 +29,10 @@
 #endif
 #include "diagfwd_mhi.h"
 #include "diag_dci.h"
+#ifdef CONFIG_LGE_DIAG_BYPASS
+#include "lg_diag_bypass.h"
+#endif
+
 
 #ifdef CONFIG_MSM_MHI
 #define diag_mdm_init		diag_mhi_init
@@ -37,6 +41,10 @@
 #endif
 
 #define BRIDGE_TO_MUX(x)	(x + DIAG_MUX_BRIDGE_BASE)
+
+#ifdef CONFIG_LGE_DIAG_BYPASS
+extern int diag_bypass_enable;
+#endif
 
 struct diagfwd_bridge_info bridge_info[NUM_REMOTE_DEV] = {
 	{
@@ -327,3 +335,12 @@ uint16_t diag_get_remote_device_mask(void)
 	return remote_dev;
 }
 
+#ifdef CONFIG_LGE_DIAG_BYPASS
+int diagfwd_bridge_mux_connect_bypass(int id, int mode) {
+    return diagfwd_bridge_mux_connect(id, mode);
+}
+
+int diagfwd_bridge_mux_disconnect_bypass(int id, int mode) {
+    return diagfwd_bridge_mux_disconnect(id, mode);
+}
+#endif

@@ -2201,6 +2201,17 @@ config EFI
 	  is only useful for kernels that may run on systems that have
 	  UEFI firmware.
 
+config ARM_DECOMPRESSOR_LIMIT
+ hex "Limit the decompressor memory area"
+ default 0x10000000
+ help
+ Allows overriding of the memory size that decompressor maps with
+ read, write and execute permissions to avoid speculative prefetch.
+
+ By default ARM_DECOMPRESSOR_LIMIT maps first 1GB of memory
+ with read, write and execute permissions and reset of the memory
+ as strongly ordered.
+
 endmenu
 
 menu "CPU Power Management"

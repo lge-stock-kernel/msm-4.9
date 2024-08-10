@@ -17,7 +17,9 @@
 #include <linux/power_supply.h>
 #include "wcdcal-hwdep.h"
 #include <sound/jack.h>
-
+#ifdef CONFIG_MACH_LGE
+#include <linux/extcon.h>
+#endif
 #define TOMBAK_MBHC_NC	0
 #define TOMBAK_MBHC_NO	1
 #define WCD_MBHC_DEF_BUTTONS 8
@@ -140,7 +142,11 @@ do {                                                    \
 #define OCP_ATTEMPT 20
 #define HS_DETECT_PLUG_TIME_MS (3 * 1000)
 #define SPECIAL_HS_DETECT_TIME_MS (2 * 1000)
+#if defined(CONFIG_SND_PRJ_MH5)
+#define MBHC_BUTTON_PRESS_THRESHOLD_MIN 500
+#else
 #define MBHC_BUTTON_PRESS_THRESHOLD_MIN 250
+#endif
 #define GND_MIC_SWAP_THRESHOLD 4
 #define GND_MIC_USBC_SWAP_THRESHOLD 2
 #define WCD_FAKE_REMOVAL_MIN_PERIOD_MS 100
@@ -421,6 +427,9 @@ struct wcd_mbhc_config {
 	bool detect_extn_cable;
 	bool mono_stero_detection;
 	bool (*swap_gnd_mic)(struct snd_soc_codec *codec, bool active);
+#ifdef CONFIG_SND_SOC_HIFI_CTRL
+	bool (*hifi_earjack_sw)(struct snd_soc_codec *codec, int value);
+#endif
 	bool hs_ext_micbias;
 	bool gnd_det_en;
 	int key_code[WCD_MBHC_KEYCODE_NUM];
@@ -495,6 +504,9 @@ struct wcd_mbhc_cb {
 	void (*update_anc_state)(struct snd_soc_codec *codec,
 				 bool enable, int anc_num);
 	bool (*is_anc_on)(struct wcd_mbhc *mbhc);
+#ifdef CONFIG_MACH_LGE
+	void (*remove_detach_mic_noise)(struct snd_soc_codec *);
+#endif
 };
 
 struct wcd_mbhc_fn {
@@ -590,6 +602,17 @@ struct wcd_mbhc {
 
 	struct wcd_mbhc_fn *mbhc_fn;
 	bool force_linein;
+#ifdef CONFIG_MACH_LGE
+	struct extcon_dev *edev;
+	char edev_name[15];
+	u32 adv_hdset_min;
+	u32 adv_hdset_max;
+#endif
+#ifdef CONFIG_LGE_MOISTURE_DETECTION
+	/* impedance of org hphl and hphr */
+	//uint32_t zl_org, zr_org;
+	bool moisture_status;
+#endif
 };
 
 void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,

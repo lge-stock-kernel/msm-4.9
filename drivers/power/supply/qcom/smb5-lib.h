@@ -20,6 +20,9 @@
 #include <linux/extcon.h>
 #include <linux/alarmtimer.h>
 #include "storm-watch.h"
+#ifdef CONFIG_LGE_PM
+#include <linux/gpio/consumer.h>
+#endif
 
 enum print_reason {
 	PR_INTERRUPT	= BIT(0),
@@ -82,7 +85,15 @@ enum print_reason {
 #define SDP_100_MA			100000
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
+/* Set Default DCP Charging Current 2A
+ * LGE model USE 1.8A at DCP Cuurent
+ * Charging ceiling set the correct current.
+ */
+#ifdef CONFIG_LGE_PM
+#define DCP_CURRENT_UA			2000000
+#else
 #define DCP_CURRENT_UA			1500000
+#endif
 #define HVDCP_CURRENT_UA		3000000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
@@ -98,6 +109,12 @@ enum sink_src_mode {
 	SINK_MODE,
 	SRC_MODE,
 	UNATTACHED_MODE,
+};
+
+enum qc2_non_comp_voltage {
+	QC2_COMPLIANT,
+	QC2_NON_COMPLIANT_9V,
+	QC2_NON_COMPLIANT_12V
 };
 
 enum {
@@ -310,6 +327,9 @@ struct smb_charger {
 	struct mutex		lock;
 	struct mutex		ps_change_lock;
 	struct mutex		vadc_lock;
+#ifdef CONFIG_LGE_USB_TYPE_C
+	struct mutex		otg_oc_lock;
+#endif
 
 	/* power supplies */
 	struct power_supply		*batt_psy;
@@ -396,6 +416,7 @@ struct smb_charger {
 	u8			float_cfg;
 	bool			use_extcon;
 	bool			otg_present;
+	bool			hvdcp_disable;
 	int			hw_max_icl_ua;
 	int			auto_recharge_soc;
 	bool			jeita_configured;
@@ -410,6 +431,7 @@ struct smb_charger {
 	bool			aicl_max_reached;
 	bool			moisture_present;
 	bool			moisture_protection_enabled;
+	bool			moisture_ux;
 	bool			fcc_stepper_enable;
 	int			charge_full_cc;
 	int			cc_soc_ref;
@@ -419,6 +441,8 @@ struct smb_charger {
 	u32			wa_flags;
 	int			boost_current_ua;
 	bool			dbc_usbov;
+	int                     qc2_max_pulses;
+	enum qc2_non_comp_voltage qc2_unsupported_voltage;
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
@@ -438,6 +462,22 @@ struct smb_charger {
 	u32			headroom_mode;
 	bool			flash_init_done;
 	bool			flash_active;
+#ifdef CONFIG_LGE_PM
+	int			parallel_pct;
+	bool		non_compliant_work_at_boot;
+#ifdef CONFIG_LGE_ONE_BINARY_SKU
+	bool			laop_hvdcp_limit_enable;
+#endif
+#endif
+#ifdef CONFIG_LGE_USB_TYPE_C
+	int				ctype_rp;
+	bool			typec_present;
+	int				hvdcp_det_retry;
+	struct delayed_work		hvdcp_det_prepare_work;
+	bool			first_work;
+	bool				typec_dfp;
+#endif
+
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
@@ -492,6 +532,9 @@ irqreturn_t switcher_power_ok_irq_handler(int irq, void *data);
 irqreturn_t wdog_bark_irq_handler(int irq, void *data);
 irqreturn_t typec_or_rid_detection_change_irq_handler(int irq, void *data);
 irqreturn_t usbin_ov_irq_handler(int irq, void *data);
+#ifdef CONFIG_LGE_USB_TYPE_C
+irqreturn_t otg_oc_irq_handler(int irq, void *data);
+#endif
 
 int smblib_get_prop_input_suspend(struct smb_charger *chg,
 				union power_supply_propval *val);
@@ -597,4 +640,43 @@ int smblib_icl_override(struct smb_charger *chg, bool override);
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
+
+#ifdef CONFIG_LGE_PM
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+extern bool unified_bootmode_fabproc(void);
+extern bool unified_nodes_store(const char* key, const char* value, size_t size);
+extern bool unified_nodes_show(const char* key, char* value);
+#endif
+int extension_smb5_probe(struct smb_charger *chg);
+void extension_typec_src_removal(struct smb_charger *chg);
+
+irqreturn_t override_usb_plugin_irq_handler(int irq, void *data);
+irqreturn_t override_chg_state_change_irq_handler(int irq, void *data);
+irqreturn_t override_typec_attach_detach_irq_handler(int irq, void *data);
+irqreturn_t override_usb_source_change_irq_handler(int irq, void *data);
+irqreturn_t override_usbin_uv_irq_handler(int irq, void *data);
+irqreturn_t override_switcher_power_ok_irq_handler(int irq, void *data);
+irqreturn_t override_dcin_irq_handler(int irq, void *data);
+irqreturn_t override_typec_state_change_irq_handler(int irq, void *data);
+irqreturn_t override_typec_or_rid_detection_change_irq_handler(int irq, void *data);
+
+bool wa_avoiding_mbg_fault_uart(bool enable);
+bool wa_avoiding_mbg_fault_usbid(bool enable);
+void wa_detect_standard_hvdcp_trigger(struct smb_charger* chg);
+void wa_detect_standard_hvdcp_clear(void);
+bool wa_detect_standard_hvdcp_check(void);
+void wa_rerun_apsd_for_dcp_clear(void);
+void wa_rerun_apsd_for_dcp_trigger(struct smb_charger *chg);
+void wa_charging_without_cc_trigger(struct smb_charger* chg, bool vbus);
+void wa_charging_for_unknown_cable_trigger(struct smb_charger* chg);
+void wa_support_weak_supply_trigger(struct smb_charger* chg, u8 stat);
+void wa_support_weak_supply_check(void);
+bool wa_command_icl_override(struct smb_charger* chg);
+void wa_get_pmic_dump(void);
+#endif
+#ifdef CONFIG_LGE_USB_TYPE_C
+void typec_sink_insertion_removal(struct smb_charger* chg, const union power_supply_propval *val);
+void typec_source_insertion_removal(struct smb_charger* chg, const union power_supply_propval *val);
+
+#endif
 #endif /* __SMB5_CHARGER_H */

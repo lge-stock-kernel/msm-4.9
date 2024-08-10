@@ -24,7 +24,18 @@
 #include "u_f.h"
 #include "u_hid.h"
 
+#ifdef CONFIG_LGE_USB_GADGET
+#define MAX_INST_NAME_LEN 40
+#endif
+
 #define HIDG_MINORS	4
+
+#ifdef CONFIG_MACH_SDM450_WIDEPD
+#define USBD_TOUCH_HID_X_MAX     1920
+#define USBD_TOUCH_HID_Y_MAX     1080
+#define USBD_TOUCH_HID_FINGER_MAX 10
+#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
+#endif
 
 static int major, minors;
 static struct class *hidg_class;
@@ -66,6 +77,10 @@ struct f_hidg {
 
 	struct usb_ep			*in_ep;
 	struct usb_ep			*out_ep;
+
+#ifdef CONFIG_LGE_USB_GADGET
+	bool				is_charge;
+#endif
 };
 
 static inline struct f_hidg *func_to_hidg(struct usb_function *f)
@@ -75,7 +90,133 @@ static inline struct f_hidg *func_to_hidg(struct usb_function *f)
 
 /*-------------------------------------------------------------------------*/
 /*                           Static descriptors                            */
+#ifdef CONFIG_MACH_SDM450_WIDEPD
+static struct usb_interface_descriptor hidg_interface_desc = {
+	.bLength		= sizeof hidg_interface_desc,
+	.bDescriptorType	= USB_DT_INTERFACE,
+	.bInterfaceNumber	= 0x00,
+	.bAlternateSetting	= 0,
+	.bNumEndpoints		= 2,
+	.bInterfaceClass	= 0x03,
+	.bInterfaceSubClass	= 0x00,
+	.bInterfaceProtocol	= 0x00,
+	.iInterface		= 0,
+};
 
+static struct hid_descriptor hidg_desc = {
+	.bLength			= sizeof hidg_desc,
+	.bDescriptorType		= 0x21,
+	.bcdHID				= 0x0101,
+	.bCountryCode			= 0x00,
+	.bNumDescriptors		= 0x1,
+	.desc[0].bDescriptorType	= 0x22,
+	/*.desc[0].wDescriptorLenght	= DYNAMIC */
+};
+
+#ifdef CONFIG_LGE_USB_GADGET
+/* Super-Speed Support */
+
+static struct usb_endpoint_descriptor hidg_ss_in_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x81,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_endpoint_descriptor hidg_ss_out_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x01,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_descriptor_header *hidg_ss_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	(struct usb_descriptor_header *)&hidg_ss_in_ep_desc,
+	(struct usb_descriptor_header *)&hidg_ss_out_ep_desc,
+	NULL,
+};
+#endif
+
+/* High-Speed Support */
+
+static struct usb_endpoint_descriptor hidg_hs_in_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x81,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_endpoint_descriptor hidg_hs_out_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x01,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_descriptor_header *hidg_hs_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	(struct usb_descriptor_header *)&hidg_hs_in_ep_desc,
+	(struct usb_descriptor_header *)&hidg_hs_out_ep_desc,
+	NULL,
+};
+
+/* Full-Speed Support */
+
+static struct usb_endpoint_descriptor hidg_fs_in_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x81,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				       * HID gadget configuration?
+				       * (struct hidg_func_descriptor)
+				       */
+};
+
+static struct usb_endpoint_descriptor hidg_fs_out_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= 0x01,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 0x01, /* FIXME: Add this field in the
+				       * HID gadget configuration?
+				       * (struct hidg_func_descriptor)
+				       */
+};
+
+static struct usb_descriptor_header *hidg_fs_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	(struct usb_descriptor_header *)&hidg_fs_in_ep_desc,
+	(struct usb_descriptor_header *)&hidg_fs_out_ep_desc,
+	NULL,
+};
+#else
 static struct usb_interface_descriptor hidg_interface_desc = {
 	.bLength		= sizeof hidg_interface_desc,
 	.bDescriptorType	= USB_DT_INTERFACE,
@@ -97,6 +238,42 @@ static struct hid_descriptor hidg_desc = {
 	/*.desc[0].bDescriptorType	= DYNAMIC */
 	/*.desc[0].wDescriptorLenght	= DYNAMIC */
 };
+
+#ifdef CONFIG_LGE_USB_GADGET
+/* Super-Speed Support */
+
+static struct usb_endpoint_descriptor hidg_ss_in_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= USB_DIR_IN,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 4, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_endpoint_descriptor hidg_ss_out_ep_desc = {
+	.bLength		= USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType	= USB_DT_ENDPOINT,
+	.bEndpointAddress	= USB_DIR_OUT,
+	.bmAttributes		= USB_ENDPOINT_XFER_INT,
+	/*.wMaxPacketSize	= DYNAMIC */
+	.bInterval		= 4, /* FIXME: Add this field in the
+				      * HID gadget configuration?
+				      * (struct hidg_func_descriptor)
+				      */
+};
+
+static struct usb_descriptor_header *hidg_ss_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	(struct usb_descriptor_header *)&hidg_ss_in_ep_desc,
+	(struct usb_descriptor_header *)&hidg_ss_out_ep_desc,
+	NULL,
+};
+#endif
 
 /* High-Speed Support */
 
@@ -165,6 +342,250 @@ static struct usb_descriptor_header *hidg_fs_descriptors[] = {
 	(struct usb_descriptor_header *)&hidg_fs_out_ep_desc,
 	NULL,
 };
+#endif
+
+#ifdef CONFIG_MACH_SDM450_WIDEPD
+static const unsigned char hidg_report_desc[] = {
+  0x05, 0x0d,                    // USAGE_PAGE (Digitizers)
+  0x09, 0x04,                    // USAGE (Touch Screen)
+  0xa1, 0x01,                    // COLLECTION (Application)
+  0x85, 0x01,                    //   REPORT_ID (1)
+  0x09, 0x22,                    //   USAGE (Finger)
+  0xa1, 0x02,                    //   COLLECTION (Logical)
+  0x09, 0x42,                    //     USAGE (Tip Switch)
+  0x09, 0x32,                    //     USAGE (In Range)
+  0x09, 0x47,                    //     USAGE (Confidence)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+  0x75, 0x01,                    //     REPORT_SIZE (1)
+  0x95, 0x03,                    //     REPORT_COUNT (3)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x5c,                    //     USAGE (Gesture)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x1f,                    //     LOGICAL_MAXIMUM (31)
+  0x75, 0x05,                    //     REPORT_SIZE (5)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x51,                    //     USAGE (Contact Identifier)
+  0x75, 0x08,                    //     REPORT_SIZE (8)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x05, 0x01,                    //     USAGE_PAGE (Generic Desktop)
+  0x75, 0x10,                    //     REPORT_SIZE (16)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x55, 0x00,                    //     UNIT_EXPONENT (0)
+  0x65, 0x00,                    //     UNIT (None)
+  0x09, 0x30,                    //     USAGE (X)
+  0x35, 0x00,                    //     PHYSICAL_MINIMUM (0)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 0) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 8) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 16) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x31,                    //     USAGE (Y)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 0) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 8) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 16) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x05, 0x0d,                    //     USAGE_PAGE (Digitizers)
+  0x09, 0x48,                    //     USAGE (Width)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 0) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 8) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 16) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x49,                    //     USAGE (Height)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 0) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 8) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 16) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x30,                    //     USAGE (Tip Pressure)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+  0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
+  0x75, 0x08,                    //     REPORT_SIZE (8)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0xc0,                          //   END_COLLECTION
+  0xa1, 0x02,                    //   COLLECTION (Logical)
+  0x09, 0x42,                    //     USAGE (Tip Switch)
+  0x09, 0x32,                    //     USAGE (In Range)
+  0x09, 0x47,                    //     USAGE (Confidence)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+  0x75, 0x01,                    //     REPORT_SIZE (1)
+  0x95, 0x03,                    //     REPORT_COUNT (3)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x5c,                    //     USAGE (Gesture)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x1f,                    //     LOGICAL_MAXIMUM (31)
+  0x75, 0x05,                    //     REPORT_SIZE (5)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x51,                    //     USAGE (Contact Identifier)
+  0x75, 0x08,                    //     REPORT_SIZE (8)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x05, 0x01,                    //     USAGE_PAGE (Generic Desktop)
+  0x75, 0x10,                    //     REPORT_SIZE (16)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x55, 0x00,                    //     UNIT_EXPONENT (0)
+  0x65, 0x00,                    //     UNIT (None)
+  0x09, 0x30,                    //     USAGE (X)
+  0x35, 0x00,                    //     PHYSICAL_MINIMUM (0)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 0) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 8) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 16) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_X_MAX >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x31,                    //     USAGE (Y)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 0) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 8) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 16) & 0xff),
+  (uint8_t) ((USBD_TOUCH_HID_Y_MAX >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x05, 0x0d,                    //     USAGE_PAGE (Digitizers)
+  0x09, 0x48,                    //     USAGE (Width)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 0) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 8) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 16) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x49,                    //     USAGE (Height)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+#if 1
+  0x27,
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 0) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 8) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 16) & 0xff),
+  (uint8_t) ((MIN(USBD_TOUCH_HID_X_MAX, USBD_TOUCH_HID_Y_MAX) >> 24) & 0xff),
+#else
+  0x27, 0xff, 0xff, 0x00, 0x00,  //     LOGICAL_MAXIMUM (65535)
+#endif
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x09, 0x30,                    //     USAGE (Tip Pressure)
+  0x45, 0x00,                    //     PHYSICAL_MAXIMUM (0)
+  0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
+  0x75, 0x08,                    //     REPORT_SIZE (8)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0xc0,                          //   END_COLLECTION
+  0x05, 0x0d,                    //   USAGE_PAGE (Digitizers)
+  0x09, 0x54,                    //   USAGE (Contact Count)
+  0x75, 0x08,                    //   REPORT_SIZE (8)
+  0x95, 0x01,                    //   REPORT_COUNT (1)
+  0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+#if 1
+  0x25, USBD_TOUCH_HID_FINGER_MAX,
+#else
+  0x25, 0x0a,                    //   LOGICAL_MAXIMUM (10)
+#endif
+  0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+  0x09, 0x55,                    //   USAGE (Contact Count Maximum)
+  0xb1, 0x02,                    //   FEATURE (Data,Var,Abs)
+  0xc0,                          // END_COLLECTION
+  0x05, 0x0c,                    // USAGE_PAGE (Consumer Devices)
+  0x09, 0x01,                    // USAGE (Consumer Control)
+  0xa1, 0x01,                    // COLLECTION (Application)
+  0xa1, 0x02,                    //   COLLECTION (Logical)
+  0x85, 0x04,                    //     REPORT_ID (4)
+  0x09, 0xe9,                    //     USAGE (Volume Up)
+  0x09, 0xea,                    //     USAGE (Volume Down)
+  0x09, 0x60,                    //     USAGE (Data On Screen)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+  0x75, 0x01,                    //     REPORT_SIZE (1)
+  0x95, 0x03,                    //     REPORT_COUNT (3)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x75, 0x05,                    //     REPORT_SIZE (5)
+  0x81, 0x01,                    //     INPUT (Cnst,Ary,Abs)
+  0xc0,                          //   END_COLLECTION
+  0xc0                           // END_COLLECTION
+};
+#endif
+
+#ifdef CONFIG_LGE_USB_GADGET
+static const unsigned char hidg_charge_report_desc[] = {
+	0x06, 0xA0, 0xFF, 0x09, 0xA5, 0xA1, 0x01, 0x09,
+	0xA6, 0x09, 0xA7, 0x15, 0x80, 0x25, 0x7F, 0x75,
+	0x08, 0x95, 0x02, 0x81, 0x02, 0x09, 0xA9, 0x15,
+	0x80, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x91,
+	0x02, 0xC0,
+};
+
+static struct usb_interface_descriptor hidg_charge_interface_desc = {
+	.bLength		= sizeof hidg_charge_interface_desc,
+	.bDescriptorType	= USB_DT_INTERFACE,
+	/* .bInterfaceNumber	= DYNAMIC */
+	.bAlternateSetting	= 0,
+	.bNumEndpoints		= 0,
+	.bInterfaceClass	= USB_CLASS_HID,
+	.bInterfaceSubClass	= 0,
+	.bInterfaceProtocol	= 0,
+	/* .iInterface		= DYNAMIC */
+};
+
+static struct usb_descriptor_header *hidg_charge_ss_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_charge_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	NULL,
+};
+
+
+static struct usb_descriptor_header *hidg_charge_hs_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_charge_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	NULL,
+};
+
+
+static struct usb_descriptor_header *hidg_charge_fs_descriptors[] = {
+	(struct usb_descriptor_header *)&hidg_charge_interface_desc,
+	(struct usb_descriptor_header *)&hidg_desc,
+	NULL,
+};
+#endif
 
 /*-------------------------------------------------------------------------*/
 /*                                 Strings                                 */
@@ -547,6 +968,9 @@ static void hidg_disable(struct usb_function *f)
 	struct f_hidg_req_list *list, *next;
 	unsigned long flags;
 
+#ifdef CONFIG_LGE_USB_GADGET
+	if (!hidg->is_charge) {
+#endif
 	usb_ep_disable(hidg->in_ep);
 	usb_ep_disable(hidg->out_ep);
 
@@ -566,6 +990,9 @@ static void hidg_disable(struct usb_function *f)
 
 	hidg->req = NULL;
 	spin_unlock_irqrestore(&hidg->write_spinlock, flags);
+#ifdef CONFIG_LGE_USB_GADGET
+	}
+#endif
 }
 
 static int hidg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
@@ -699,6 +1126,26 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 		goto fail;
 	hidg_interface_desc.bInterfaceNumber = status;
 
+#ifdef CONFIG_LGE_USB_GADGET
+	if (hidg->is_charge) {
+		hidg_charge_interface_desc.iInterface =
+			hidg_interface_desc.iInterface;
+		hidg_charge_interface_desc.bInterfaceNumber =
+			hidg_interface_desc.bInterfaceNumber;
+
+		hidg_desc.desc[0].bDescriptorType = HID_DT_REPORT;
+		hidg_desc.desc[0].wDescriptorLength =
+			cpu_to_le16(hidg->report_desc_length);
+
+		status = usb_assign_descriptors(f,
+				hidg_charge_fs_descriptors,
+				hidg_charge_hs_descriptors,
+				hidg_charge_ss_descriptors,
+				NULL);
+		if (status)
+			goto fail;
+	} else {
+#endif
 	/* allocate instance-specific endpoints */
 	status = -ENODEV;
 	ep = usb_ep_autoconfig(c->cdev->gadget, &hidg_fs_in_ep_desc);
@@ -731,10 +1178,26 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 	hidg_hs_out_ep_desc.bEndpointAddress =
 		hidg_fs_out_ep_desc.bEndpointAddress;
 
+#ifdef CONFIG_LGE_USB_GADGET
+	hidg_ss_in_ep_desc.wMaxPacketSize = cpu_to_le16(hidg->report_length);
+	hidg_ss_out_ep_desc.wMaxPacketSize = cpu_to_le16(hidg->report_length);
+
+	hidg_ss_in_ep_desc.bEndpointAddress =
+		hidg_fs_in_ep_desc.bEndpointAddress;
+	hidg_ss_out_ep_desc.bEndpointAddress =
+		hidg_fs_out_ep_desc.bEndpointAddress;
+
+	status = usb_assign_descriptors(f, hidg_fs_descriptors,
+			hidg_hs_descriptors, hidg_ss_descriptors, NULL);
+#else
 	status = usb_assign_descriptors(f, hidg_fs_descriptors,
 			hidg_hs_descriptors, NULL, NULL);
+#endif
 	if (status)
 		goto fail;
+#ifdef CONFIG_LGE_USB_GADGET
+	}
+#endif
 
 	spin_lock_init(&hidg->write_spinlock);
 	hidg->write_pending = 1;
@@ -744,6 +1207,9 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 	init_waitqueue_head(&hidg->read_queue);
 	INIT_LIST_HEAD(&hidg->completed_out_req);
 
+#ifdef CONFIG_LGE_USB_GADGET
+	if (!hidg->is_charge) {
+#endif
 	/* create char device */
 	cdev_init(&hidg->cdev, &f_hidg_fops);
 	dev = MKDEV(major, hidg->minor);
@@ -757,6 +1223,9 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 		status = PTR_ERR(device);
 		goto del;
 	}
+#ifdef CONFIG_LGE_USB_GADGET
+	}
+#endif
 
 	return 0;
 del:
@@ -943,6 +1412,42 @@ static void hidg_free_inst(struct usb_function_instance *f)
 	kfree(opts);
 }
 
+#ifdef CONFIG_LGE_USB_GADGET
+static int hidg_set_inst_name(struct usb_function_instance *fi,
+			      const char *name)
+{
+	struct f_hid_opts *opts;
+
+	if (!name)
+		return 0;
+
+	opts = container_of(fi, struct f_hid_opts, func_inst);
+
+#ifdef CONFIG_MACH_SDM450_WIDEPD
+	if (!strncmp("touch", name, MAX_INST_NAME_LEN)) {
+		opts->is_charge = false;
+		opts->subclass = 0;
+		opts->protocol = 0;
+		opts->report_length = 64;
+		opts->report_desc_length = sizeof(hidg_report_desc);
+		opts->report_desc = (unsigned char *)hidg_report_desc;
+		opts->report_desc_alloc = true;
+	}
+	else
+#endif
+	if (!strncmp("charge", name, MAX_INST_NAME_LEN)) {
+		opts->is_charge = true;
+		opts->subclass = 0;
+		opts->protocol = 0;
+		opts->report_desc_length = sizeof(hidg_charge_report_desc);
+		opts->report_desc = (unsigned char *)hidg_charge_report_desc;
+		opts->report_desc_alloc = false;
+	}
+
+	return 0;
+}
+#endif
+
 static struct usb_function_instance *hidg_alloc_inst(void)
 {
 	struct f_hid_opts *opts;
@@ -953,6 +1458,9 @@ static struct usb_function_instance *hidg_alloc_inst(void)
 	if (!opts)
 		return ERR_PTR(-ENOMEM);
 	mutex_init(&opts->lock);
+#ifdef CONFIG_LGE_USB_GADGET
+	opts->func_inst.set_inst_name = hidg_set_inst_name;
+#endif
 	opts->func_inst.free_func_inst = hidg_free_inst;
 	ret = &opts->func_inst;
 
@@ -1000,10 +1508,16 @@ static void hidg_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_hidg *hidg = func_to_hidg(f);
 
+#ifdef CONFIG_LGE_USB_GADGET
+	if (!hidg->is_charge) {
+#endif
 	device_destroy(hidg_class, MKDEV(major, hidg->minor));
 	cdev_del(&hidg->cdev);
 
 	usb_free_all_descriptors(f);
+#ifdef CONFIG_LGE_USB_GADGET
+	}
+#endif
 }
 
 static struct usb_function *hidg_alloc(struct usb_function_instance *fi)
@@ -1049,6 +1563,9 @@ static struct usb_function *hidg_alloc(struct usb_function_instance *fi)
 
 	/* this could me made configurable at some point */
 	hidg->qlen	   = 4;
+#ifdef CONFIG_LGE_USB_GADGET
+	hidg->is_charge    = opts->is_charge;
+#endif
 
 	return &hidg->func;
 }

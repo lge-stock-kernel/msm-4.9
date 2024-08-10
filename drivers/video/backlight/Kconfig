@@ -390,6 +390,18 @@ config BACKLIGHT_LM3639
 	help
 	  This supports TI LM3639 Backlight + 1.5A Flash LED Driver
 
+config LGE_DISPLAY_EXTERNAL_BL
+	tristate "Backlight driver for DW8831 or LM3697"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  Say Y to enable the backlight driver for DW8831 or LM3697.
+
+config BACKLIGHT_SGM37603A
+	tristate "Backlight driver for SGMICRO SGM37603A"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  Say Y to enable the backlight driver for SGMICRO SGM37603A.
+
 config BACKLIGHT_LP855X
 	tristate "Backlight driver for TI LP855X"
 	depends on BACKLIGHT_CLASS_DEVICE && I2C && PWM

@@ -9165,7 +9165,11 @@ int wlan_hdd_cfg80211_init(struct device *dev,
 #endif
     )
     {
+// LGE_CHANGE_S, 2017.21-27, neo-wifi@lge.com, Disable F/W Roaming
+#if 0
         wiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
+#endif
+// LGE_CHANGE_E, 2017.21-27, neo-wifi@lge.com, Disable F/W Roaming
     }
 #endif
 #ifdef FEATURE_WLAN_TDLS
@@ -15812,6 +15816,12 @@ int __wlan_hdd_cfg80211_scan( struct wiphy *wiphy,
                 {
                    scanRequest.skipDfsChnlInP2pSearch = 0;
                 }
+/* LGE_PATCH_S, 20190529, cheolsook.lee@lge.com, miracast connection to Passive Channel */
+                if ((!hdd_connIsConnected(WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))) && (WLAN_HDD_P2P_CLIENT == pAdapter->device_mode))
+                {
+                    scanRequest.skipDfsChnlInP2pSearch = 0;
+                }
+/* LGE_PATCH_E, 20190529, cheolsook.lee@lge.com, miracast connection to Passive Channel */
 
             }
         }
@@ -18848,6 +18858,14 @@ static int __wlan_hdd_cfg80211_get_station(struct wiphy *wiphy, struct net_devic
 #endif
 
     sinfo->rx_packets = pAdapter->hdd_stats.summary_stat.rx_frm_cnt;
+
+//LGE_CHANGE_S, 2019.01.23, protocol-wifi@lge.com, Add Statistic log for WiFi Calling
+    {
+        printk("[LGE_WLAN][Info] RSSI=%3d, MCS=%2d, TxFlag=%2d, Tx=%9d, TxRetry=%9d, TxFail=%9d, Rx=%9d\n",
+                sinfo->signal, sinfo->txrate.mcs, sinfo->txrate.flags, sinfo->tx_packets,
+                sinfo->tx_retries, sinfo->tx_failed, sinfo->rx_packets);
+    }
+//LGE_CHANGE_E, 2019.01.23, protocol-wifi@lge.com, Add Statistic log for WiFi Calling
 
     vos_mem_copy(&pHddStaCtx->conn_info.txrate,
                  &sinfo->txrate, sizeof(sinfo->txrate));

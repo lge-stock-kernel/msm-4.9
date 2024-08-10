@@ -318,7 +318,7 @@
  */
 
 #define CFG_ENABLE_RTT_SUPPORT            "gEnableRTTSupport"
-#define CFG_ENABLE_RTT_SUPPORT_DEFAULT    (1)
+#define CFG_ENABLE_RTT_SUPPORT_DEFAULT    (0)    // LGE patch
 #define CFG_ENABLE_RTT_SUPPORT_MIN        (0)
 #define CFG_ENABLE_RTT_SUPPORT_MAX        (1)
 
@@ -1374,7 +1374,13 @@ typedef enum
 #define CFG_MWS_COEX_CONFIG1_NAME            "mwsCoexConfig1"
 #define CFG_MWS_COEX_CONFIGX_MIN             ( 0 )
 #define CFG_MWS_COEX_CONFIGX_MAX             ( 0xFFFFFFFF )
+// LGE_CHANGE_S, 2018.04-04, hayun.kim@lge.com, disable modem txpower back off
+#ifdef FEATURE_SUPPORT_LGE
+#define CFG_MWS_COEX_CONFIGX_DEFAULT         ( 22 )
+#else
 #define CFG_MWS_COEX_CONFIGX_DEFAULT         ( 0 )
+#endif
+// LGE_CHANGE_E, 2018.04-04, hayun.kim@lge.com, disable modem txpower back off
 #define CFG_MWS_COEX_CONFIG2_NAME            "mwsCoexConfig2"
 #define CFG_MWS_COEX_CONFIG3_NAME            "mwsCoexConfig3"
 #define CFG_MWS_COEX_CONFIG4_NAME            "mwsCoexConfig4"
@@ -2555,10 +2561,15 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_ENABLE_DEBUG_CONNECT_ISSUE_MAX         (0xFF)
 #define CFG_ENABLE_DEBUG_CONNECT_ISSUE_DEFAULT     (0)
 
+ // CR#3326366 - ch 120, 124, 128 open with gEnableStrictRegulatoryForFCC=0 in INI file
 #define CFG_ENABLE_STRICT_REGULATORY_FOR_FCC_NAME                "gEnableStrictRegulatoryForFCC"
 #define CFG_ENABLE_STRICT_REGULATORY_FOR_FCC_MIN                 ( 0 )
 #define CFG_ENABLE_STRICT_REGULATORY_FOR_FCC_MAX                 ( 1 )
+#ifdef FEATURE_SUPPORT_LGE
+#define CFG_ENABLE_STRICT_REGULATORY_FOR_FCC_DEFAULT             ( 1 )
+#else
 #define CFG_ENABLE_STRICT_REGULATORY_FOR_FCC_DEFAULT             ( 0 )
+#endif
 
 #define CFG_ADVERTISE_CONCURRENT_OPERATION_NAME    "gAdvertiseConcurrentOperation"
 #define CFG_ADVERTISE_CONCURRENT_OPERATION_DEFAULT ( 1 )

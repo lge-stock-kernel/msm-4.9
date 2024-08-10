@@ -62,6 +62,14 @@
 #define QPNP_VADC_STATUS2_CONV_SEQ_TIMEOUT_STS			BIT(0)
 #define QPNP_VADC_STATUS2_CONV_SEQ_STATE_SHIFT			4
 #define QPNP_VADC_CONV_TIMEOUT_ERR				2
+#ifdef CONFIG_LGE_USB
+#define QPNP_VADC_THR_INT_EN_SET				0x15
+#define QPNP_VADC_LOW_THR_INT_EN_SET				BIT(4)
+#define QPNP_VADC_HIGH_THR_INT_EN_SET				BIT(3)
+#define QPNP_VADC_THR_INT_EN_CLR				0x16
+#define QPNP_VADC_LOW_THR_INT_EN_CLR				BIT(4)
+#define QPNP_VADC_HIGH_THR_INT_EN_CLR				BIT(3)
+#endif
 
 #define QPNP_VADC_MODE_CTL					0x40
 #define QPNP_VADC_OP_MODE_SHIFT					3
@@ -235,6 +243,9 @@ static struct qpnp_vadc_scale_fn vadc_scale_fn[] = {
 	[SCALE_SMB1390_DIE_TEMP] = {qpnp_adc_scale_die_temp_1390},
 	[SCALE_BATT_THERM_TEMP_PU30] = {qpnp_adc_batt_therm_pu30},
 	[SCALE_BATT_THERM_TEMP_PU400] = {qpnp_adc_batt_therm_pu400},
+#ifdef CONFIG_LGE_PM
+	[SCALE_BATT_THERM_TEMP_68K] = {qpnp_adc_batt_therm_68k},
+#endif
 	[SCALE_BATT_THERM_TEMP_QRD_215] = {qpnp_adc_batt_therm_qrd_215}
 };
 
@@ -244,6 +255,9 @@ static struct qpnp_vadc_rscale_fn adc_vadc_rscale_fn[] = {
 
 static int32_t qpnp_vadc_calib_device(struct qpnp_vadc_chip *vadc);
 
+#if defined(CONFIG_LGE_USB_DEBUGGER) || defined(CONFIG_LGE_USB_MOISTURE_DETECT)
+extern void handle_sbu_switch(bool enable, bool moisture_on);
+#endif
 static int32_t qpnp_vadc_read_reg(struct qpnp_vadc_chip *vadc, int16_t reg,
 						u8 *data, int len)
 {
@@ -682,6 +696,14 @@ int32_t qpnp_vadc_hc_read(struct qpnp_vadc_chip *vadc,
 		return -EPROBE_DEFER;
 
 	mutex_lock(&vadc->adc->adc_lock);
+#if defined(CONFIG_LGE_USB_DEBUGGER) || defined(CONFIG_LGE_USB_MOISTURE_DETECT)
+    if(channel == VADC_AMUX3_GPIO){
+    	handle_sbu_switch(true, false);
+    }
+	if(channel == VADC_AMUX1_GPIO || channel == VADC_AMUX2_GPIO){
+    	handle_sbu_switch(false, true);
+    }
+#endif
 
 	while ((vadc->adc->adc_channels[dt_index].channel_num
 		!= channel) && (dt_index < vadc->max_channels_available))
@@ -786,6 +808,12 @@ int32_t qpnp_vadc_hc_read(struct qpnp_vadc_chip *vadc,
 			channel, result->adc_code, result->physical);
 
 fail_unlock:
+#if defined(CONFIG_LGE_USB_DEBUGGER) || defined(CONFIG_LGE_USB_MOISTURE_DETECT)
+    if(channel == VADC_AMUX3_GPIO || channel == VADC_AMUX1_GPIO || channel == VADC_AMUX2_GPIO){
+    	handle_sbu_switch(false, false);
+    }
+#endif
+
 	mutex_unlock(&vadc->adc->adc_lock);
 
 	return rc;
@@ -990,6 +1018,29 @@ static void qpnp_vadc_low_thr_fn(struct work_struct *work)
 	struct qpnp_vadc_chip *vadc = container_of(work,
 			struct qpnp_vadc_chip, trigger_low_thr_work);
 
+#ifdef CONFIG_LGE_USB
+	u8 mode_ctl = 0, mode = 0;
+	int rc = 0;
+
+	mutex_lock(&vadc->adc->adc_lock);
+
+	rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_MODE_CTL, &mode, 1);
+	if (rc < 0) {
+		pr_err("mode ctl register read failed with %d\n", rc);
+	}
+
+	if (!(mode & QPNP_VADC_MEAS_INT_MODE_MASK)) {
+		pr_err("Spurious VADC threshold 0x%x\n", mode);
+	}
+
+	mutex_unlock(&vadc->adc->adc_lock);
+
+	mode_ctl = ADC_OP_NORMAL_MODE;
+	/* Set measurement in single measurement mode */
+	qpnp_vadc_mode_select(vadc, mode_ctl);
+	qpnp_vadc_enable(vadc, false);
+#endif
+
 	vadc->state_copy->meas_int_mode = false;
 	vadc->state_copy->meas_int_request_in_queue = false;
 	vadc->state_copy->param->threshold_notification(
@@ -1001,6 +1052,29 @@ static void qpnp_vadc_high_thr_fn(struct work_struct *work)
 {
 	struct qpnp_vadc_chip *vadc = container_of(work,
 			struct qpnp_vadc_chip, trigger_high_thr_work);
+
+#ifdef CONFIG_LGE_USB
+	u8 mode_ctl = 0, mode = 0;
+	int rc = 0;
+
+	mutex_lock(&vadc->adc->adc_lock);
+
+	rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_MODE_CTL, &mode, 1);
+	if (rc < 0) {
+		pr_err("mode ctl register read failed with %d\n", rc);
+	}
+
+	if (!(mode & QPNP_VADC_MEAS_INT_MODE_MASK)) {
+		pr_debug("Spurious VADC threshold 0x%x\n", mode);
+	}
+
+	mutex_unlock(&vadc->adc->adc_lock);
+
+	mode_ctl = ADC_OP_NORMAL_MODE;
+	/* Set measurement in single measurement mode */
+	qpnp_vadc_mode_select(vadc, mode_ctl);
+	qpnp_vadc_enable(vadc, false);
+#endif
 
 	vadc->state_copy->meas_int_mode = false;
 	vadc->state_copy->meas_int_request_in_queue = false;
@@ -1021,6 +1095,8 @@ static irqreturn_t qpnp_vadc_isr(int irq, void *dev_id)
 static irqreturn_t qpnp_vadc_low_thr_isr(int irq, void *data)
 {
 	struct qpnp_vadc_chip *vadc = data;
+
+#ifndef CONFIG_LGE_USB
 	u8 mode_ctl = 0, mode = 0;
 	int rc = 0;
 
@@ -1039,6 +1115,8 @@ static irqreturn_t qpnp_vadc_low_thr_isr(int irq, void *data)
 	/* Set measurement in single measurement mode */
 	qpnp_vadc_mode_select(vadc, mode_ctl);
 	qpnp_vadc_enable(vadc, false);
+#endif
+
 	schedule_work(&vadc->trigger_low_thr_work);
 
 	return IRQ_HANDLED;
@@ -1047,6 +1125,8 @@ static irqreturn_t qpnp_vadc_low_thr_isr(int irq, void *data)
 static irqreturn_t qpnp_vadc_high_thr_isr(int irq, void *data)
 {
 	struct qpnp_vadc_chip *vadc = data;
+
+#ifndef CONFIG_LGE_USB
 	u8 mode_ctl = 0, mode = 0;
 	int rc = 0;
 
@@ -1065,6 +1145,8 @@ static irqreturn_t qpnp_vadc_high_thr_isr(int irq, void *data)
 	/* Set measurement in single measurement mode */
 	qpnp_vadc_mode_select(vadc, mode_ctl);
 	qpnp_vadc_enable(vadc, false);
+#endif
+
 	schedule_work(&vadc->trigger_high_thr_work);
 
 	return IRQ_HANDLED;
@@ -2046,6 +2128,7 @@ int32_t qpnp_vadc_conv_seq_request(struct qpnp_vadc_chip *vadc,
 
 	mutex_lock(&vadc->adc->adc_lock);
 
+
 	if (vadc->state_copy->vadc_meas_int_enable)
 		qpnp_vadc_manage_meas_int_requests(vadc);
 
@@ -2269,6 +2352,7 @@ recalibrate:
 fail_unlock:
 	if (vadc->state_copy->vadc_meas_int_enable)
 		qpnp_vadc_manage_meas_int_requests(vadc);
+
 
 	mutex_unlock(&vadc->adc->adc_lock);
 
@@ -2516,6 +2600,70 @@ static int32_t qpnp_vadc_thr_update(struct qpnp_vadc_chip *vadc,
 
 	return rc;
 }
+#ifdef CONFIG_LGE_USB
+static int32_t qpnp_vadc_high_thr_int_en(struct qpnp_vadc_chip *chip,
+		bool state)
+{
+	int rc = 0;
+	struct qpnp_vadc_chip *vadc = dev_get_drvdata(chip->dev);
+	u8 data = QPNP_VADC_HIGH_THR_INT_EN_SET;
+
+	pr_debug("%s\n", __func__);
+
+	if(state == true) {
+		rc = qpnp_vadc_write_reg(vadc,
+				QPNP_VADC_THR_INT_EN_SET,
+				&data, 1);
+
+		if(rc < 0) {
+			pr_err("enabling high thr interrupt failed, err:%d\n", rc);
+			return rc;
+		}
+	} else {
+		rc = qpnp_vadc_write_reg(vadc,
+				QPNP_VADC_THR_INT_EN_CLR,
+				&data, 1);
+
+		if(rc < 0) {
+			pr_err("disabling high thr interrupt failed, err:%d\n", rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
+static int32_t qpnp_vadc_low_thr_int_en(struct qpnp_vadc_chip *vadc,
+		bool state)
+{
+	int rc = 0;
+	u8 data = QPNP_VADC_LOW_THR_INT_EN_SET;
+
+	pr_debug("%s\n", __func__);
+
+	if(state == true) {
+		rc = qpnp_vadc_write_reg(vadc,
+				QPNP_VADC_THR_INT_EN_SET,
+				&data, 1);
+
+		if(rc < 0) {
+			pr_err("enabling low thr interrupt failed, err:%d\n", rc);
+			return rc;
+		}
+	} else {
+		rc = qpnp_vadc_write_reg(vadc,
+				QPNP_VADC_THR_INT_EN_CLR,
+				&data,1 );
+
+		if(rc < 0) {
+			pr_err("disabling low thr interrupt failed, err:%d\n", rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+#endif
 
 int32_t qpnp_vadc_channel_monitor(struct qpnp_vadc_chip *chip,
 					struct qpnp_adc_tm_btm_param *param)
@@ -2601,6 +2749,18 @@ int32_t qpnp_vadc_channel_monitor(struct qpnp_vadc_chip *chip,
 		goto fail_unlock;
 	}
 
+#ifdef CONFIG_LGE_USB
+	if (param->state_request == ADC_TM_HIGH_THR_ENABLE) {
+		qpnp_vadc_low_thr_int_en(vadc, false);
+		qpnp_vadc_high_thr_int_en(vadc, true);
+	} else if (param->state_request == ADC_TM_LOW_THR_ENABLE) {
+		qpnp_vadc_high_thr_int_en(vadc, false);
+		qpnp_vadc_low_thr_int_en(vadc, true);
+	} else if (param->state_request == ADC_TM_HIGH_LOW_THR_ENABLE) {
+		qpnp_vadc_high_thr_int_en(vadc, true);
+		qpnp_vadc_low_thr_int_en(vadc, true);
+	}
+#endif
 	rc = qpnp_vadc_thr_update(vadc, high_thr, low_thr);
 	if (rc) {
 		pr_err("vadc thr update failed with %d\n", rc);

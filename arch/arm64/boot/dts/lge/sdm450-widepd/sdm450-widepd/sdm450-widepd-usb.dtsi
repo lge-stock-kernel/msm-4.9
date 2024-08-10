@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../sdm450-widepd_common/sdm450-widepd_common-usb.dtsi"
+/*
+&pm8953_l14 {
+	qcom,init-voltage = <1800000>;
+	status = "ok";
+};
+*/
+&i2c_2 {
+	tusb422@20 {
+		ti,role = <1>;								/* 0 = SRC, 1 = SNK, 2 = DRP */ //--> this has to be fixed to 2 = DRP
+
+		ti,sbu-sw-sel1-gpio = <&tlmm 103 0>;		/* SBU_SEL_1 for widepd */
+		ti,sbu-sw-sel2-gpio = <&tlmm 50 0>;			/* SBU_SEL_1 for widepd */
+		ti,vreg18-supply = <&pm8953_l14>;			/* FUSB340 VREG_L14 */
+		ti,redriver-sel-gpio = <&tlmm 25 0>;		/* REDRIVER_SEL from FUSB340 */
+		ti,redriver-en-gpio = <&tlmm 46 0>;			/* REDRIVER_EN from FUSB340 */
+
+		ti,id-header-vdo = <0x6C001004>;
+		ti,cert-stat-vdo = <0x0>;
+		ti,product-vdo = <0x633A0212>;
+		ti,num-product-type-vdos = <1>;
+		//ti,product-type-vdo-1 = <0x11000F58>;
+		ti,product-type-vdo-1 = <0x11000058>;
+
+		ti,num-svids = <1>;
+		ti,svid-1 = <0xFF01>; /* 0xFF01 = DisplayPort. Note ENABLE_DP_ALT_MODE_SUPPORT must be defined in policy engine header to support this SVID. */
+		ti,mode-1 = <0xC0045>; /* 0x80045 = UFP_D, DP_v1.3, receptacle, USB 2 signaling may be required, UFP_D pin assignment C,D */
+		//ti,mode-1 = <0x80005>; /* 0x80045 = UFP_D, DP_v1.3, plug, USB 2 signaling may be required, UFP_D pin assignment D */
+	};
+};

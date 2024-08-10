@@ -1,0 +1,157 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../sdm450-cv7as_common/sdm450-cv7as_common-pinctrl.dtsi"
+
+&soc {
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+		label = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_key_active>;
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&tlmm 85 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			gpio-key,wakeup;
+		};
+
+		stylus_pen {
+			label = "stylus_pen";
+			gpios = <&tlmm 46 0x1>;
+			linux,input-type = <5>;
+			linux,code = <222>;
+			gpio-key,wakeup;
+			debounce-interval = <100>;
+		};
+	};
+
+	i2c_6 {
+		i2c_6_active: i2c_6_active {
+			/* active state */
+			mux {
+				pins = "gpio22", "gpio23";
+				function = "blsp_i2c6";
+			};
+
+			config {
+				pins = "gpio22", "gpio23";
+				drive-strength = <2>;
+				bias-pull-up;
+
+			};
+		};
+
+		i2c_6_sleep: i2c_6_sleep {
+			/* suspended state */
+			mux {
+				pins = "gpio22", "gpio23";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio22", "gpio23";
+				drive-strength = <2>;
+				bias-pull-up;
+				output-high;
+			};
+		};
+	};
+};
+
+&tlmm {
+	stylus_pen_gpio {
+		mux {
+			pins = "gpio46";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio46";
+			bias-disable; /* NO PULL */
+			drive-strength = <2>; /* 2 MA */
+		};
+	};
+
+	
+	/* pin set for usb redriver(tusb542) */
+	tusb422 {
+
+	   	sbu_moistrue_detect_active: sbu_moistrue_detect_active {
+	   		mux {
+	   			pins = "gpio9";
+	   			function = "gpio";
+	   		};
+	   		config {
+	   			pins = "gpio9";
+	   			bias-disable; /* NO PULL */
+	   		};
+	   	};
+
+	   	sbu_moistrue_detect_sleep: sbu_moistrue_detect_sleep {
+	   		mux {
+	   			pins = "gpio9";
+	   			function = "gpio";
+	   		};
+	   		config {
+	   			pins = "gpio9";
+				output-low;		/* Output Low */
+	   		};
+	   	};
+	   	
+		alert_gpio_active: alert_gpio_active {
+			mux {
+				pins = "gpio86";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio86";
+				driver-strength = <2>;
+			bias-disable;
+			};
+		};
+
+		atmf04_int_pin {
+			pins = "gpio21";
+			qcom,num-grp-pins = <1>;
+			qcom,pin-func = <0>;
+			label = "atmf04_int_pin";
+			atmf04_int_active: atmf04_int_active {
+				drive-strength = <6>;   /* 6 MA */
+				bias-pull-up;           /* PULL UP*/
+			};
+			atmf04_int_suspend: atmf04_int_suspend {
+				drive-strength = <6>;   /* 6 MA */
+				bias-pull-up;           /* PULL UP */
+			};
+		};
+
+		alert_gpio_sleep: alert_gpio_sleep {
+			mux {
+				pins = "gpio86";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio86";
+				driver-strength = <2>;
+				bias-pull-up;
+			};
+		};
+	};
+};

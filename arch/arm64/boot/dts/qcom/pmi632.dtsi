@@ -237,18 +237,6 @@
 				qcom,fast-avg-setup = <0>;
 				qcom,cal-val = <0>;
 			};
-
-			chan@54 {
-				label = "smb_therm";
-				reg = <0x54>;
-				qcom,decimation = <2>;
-				qcom,pre-div-channel-scaling = <0>;
-				qcom,calibration-type = "ratiometric";
-				qcom,scale-function = <2>;
-				qcom,hw-settle-time = <0>;
-				qcom,fast-avg-setup = <0>;
-				qcom,cal-val = <0>;
-			};
 		};
 
 		pmi632_adc_tm: vadc@3500 {
@@ -317,16 +305,17 @@
 			qcom,auto-recharge-soc = <98>;
 			qcom,chg-vadc = <&pmi632_vadc>;
 			qcom,flash-disable-soc = <10>;
-			qcom,sw-jeita-enable;
-			qcom,step-charging-enable;
-			qcom,hw-die-temp-mitigation;
-			qcom,hw-connector-mitigation;
+			/* LGE change setting value */
+/*			/delete-property/ qcom,sw-jeita-enable;
+			/delete-property/ qcom,step-charging-enable;
+			/delete-property/ qcom,hw-die-temp-mitigation;
+			/delete-property/ qcom,hw-connector-mitigation;
 			qcom,connector-internal-pull-kohm = <100>;
 
 			qcom,thermal-mitigation
 				= <3000000 2500000 2000000 1500000
-					1000000 500000>;
-
+					1000000 500000>;	*/
+			/* LGE change setting value */
 			qcom,chgr@1000 {
 				reg = <0x1000 0x100>;
 				interrupts =

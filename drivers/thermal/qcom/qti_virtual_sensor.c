@@ -112,6 +112,63 @@ static const struct virtual_sensor_data qti_virtual_sensors[] = {
 				"cpuss-usr"},
 		.logic = VIRT_MAXIMUM,
 	},
+#ifdef CONFIG_MACH_SDM450_CV7AS
+	/* vts = 0.238*xo_therm + 0.652*quiet_therm - 0.0737*camera + 6.14 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 3,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc",
+				"camera-usr"},
+		.coefficient_ct = 3,
+		.coefficients = {2380, 6520, -737},
+		.avg_offset = 61400000,
+		.avg_denominator = 10000,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#endif
+#ifdef CONFIG_MACH_SDM450_MH4X
+	/* vts = 0.38*xo_therm + 0.39*quiet_therm + 5.6 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {38, 39},
+		.avg_offset = 560000,
+		.avg_denominator = 100,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#endif
+#ifdef CONFIG_MACH_SDM450_MH3J
+	/* vts = 0.553*xo_therm + 0.318*quiet_therm + 2.83 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {553, 318},
+		.avg_offset = 2830000,
+		.avg_denominator = 1000,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#endif
+#if defined(CONFIG_MACH_MSM8917_MH5LM) || defined(CONFIG_MACH_MSM8917_MH5LM_NONAB)
+	/* vts = 0.711*xo_therm + 0.127*quiet_therm + 40.56 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {711, 127},
+		.avg_offset = 4056000,
+		.avg_denominator = 1000,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#endif
 };
 
 int qti_virtual_sensor_register(struct device *dev)

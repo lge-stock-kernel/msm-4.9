@@ -12,7 +12,7 @@ fw-external-y := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE))
 # There are three cases to care about:
 # 1. Building kernel with CONFIG_FIRMWARE_IN_KERNEL=y -- $(fw-shipped-y) should
 #    include the firmware files to include, according to .config
-# 2. 'make modules_install', which will install firmware for modules, and 
+# 2. 'make modules_install', which will install firmware for modules, and
 #    _also_ for the in-kernel drivers when CONFIG_FIRMWARE_IN_KERNEL=n
 # 3. 'make firmware_install', which installs all firmware, unconditionally.
 
@@ -26,6 +26,43 @@ fw-shipped- += acenic/tg1.bin
 else
 acenic-objs := acenic/tg1.bin acenic/tg2.bin
 endif
+
+ifdef CONFIG_MACH_SDM450_CV7AS
+	fw-shipped-$(CONFIG_SENSOR_ATMF04) += atmf04/atmf04_2CH_V0.37.fw
+	fw-shipped-$(CONFIG_SAR_ATMF04_12QFN) += atmf04/atmf04_2CH_V0.45.fw
+endif
+ifdef CONFIG_MACH_SDM450_MH3J
+	fw-shipped-$(CONFIG_SENSOR_ATMF04) += atmf04/atmf04_2CH_V0.36.fw
+	fw-shipped-$(CONFIG_SAR_ATMF04_12QFN) += atmf04/atmf04_2CH_V0.37.fw
+endif
+ifdef CONFIG_MACH_MSM8917_MH5LM_NONAB
+	fw-shipped-$(CONFIG_SAR_ATMF04_12QFN) += atmf04/atmf04_2CH_V0.60.fw
+endif
+ifdef CONFIG_MACH_MSM8917_MH5LM
+	fw-shipped-$(CONFIG_SAR_ATMF04_12QFN) += atmf04/atmf04_2CH_V0.60.fw
+endif
+ifdef CONFIG_MACH_SDM450_MH4X
+	fw-shipped-$(CONFIG_SENSOR_ATMF04) += atmf04/atmf04_2CH_V0.50.fw
+endif
+ifdef CONFIG_MACH_SDM450_DD14
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MIT410) += melfas/melfas_mip4_ts.img
+else
+ifdef CONFIG_MACH_SDM450_WIDEPD
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MIT410) += melfas/melfas_mip4_ts.img
+else
+ifdef CONFIG_LGE_TOUCH_FW_PATH
+fwpath := $(subst ",,$(CONFIG_LGE_TOUCH_FW_PATH))
+ifdef CONFIG_LGE_TOUCH_MODULE_DETECT
+lge_touch_image_files := $(wildcard $(srctree)/firmware/$(fwpath)/*/*)
+else
+lge_touch_image_files := $(wildcard $(srctree)/firmware/$(fwpath)/*)
+endif
+lge_touch_firmware := $(subst $(srctree)/firmware/,,$(lge_touch_image_files))
+fw-shipped-$(CONFIG_LGE_TOUCH_CORE_BASE) += $(lge_touch_firmware)
+endif
+endif
+endif
+
 fw-shipped-$(CONFIG_ACENIC) += $(acenic-objs)
 fw-shipped-$(CONFIG_ADAPTEC_STARFIRE) += adaptec/starfire_rx.bin \
 					 adaptec/starfire_tx.bin
@@ -141,6 +178,9 @@ fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
 
+quiet_cmd_copy  = COPY    $@
+      cmd_copy  = cp -r $(srctree)/$@ $@
+
 quiet_cmd_ihex2fw  = IHEX2FW $@
       cmd_ihex2fw  = $(objtree)/$(obj)/ihex2fw $< $@
 
@@ -178,6 +218,13 @@ wordsize_deps := $(wildcard include/config/64bit.h include/config/32bit.h \
 		include/config/superh32.h include/config/superh64.h \
 		include/config/x86_32.h include/config/x86_64.h)
 
+# For the $$(dir %) trick, where we need % to be expanded first.
+.SECONDEXPANSION:
+ifneq ($(objtree),$(srctree))
+$(patsubst %,$(obj)/%, $(fw-shipped-y)): %: %.gen.S
+	$(call cmd,copy)
+endif
+
 $(patsubst %,$(obj)/%.gen.S, $(fw-shipped-y)): %: $(wordsize_deps)
 	$(call cmd,fwbin,$(patsubst %.gen.S,%,$@))
 $(patsubst %,$(obj)/%.gen.S, $(fw-external-y)): %: $(wordsize_deps) \
@@ -196,7 +243,7 @@ $(obj)/%: $(obj)/%.ihex
 # Don't depend on ihex2fw if we're installing and it already exists.
 # Putting it after | in the dependencies doesn't seem sufficient when
 # we're installing after a cross-compile, because ihex2fw has dependencies
-# on stuff like /usr/lib/gcc/ppc64-redhat-linux/4.3.0/include/stddef.h and 
+# on stuff like /usr/lib/gcc/ppc64-redhat-linux/4.3.0/include/stddef.h and
 # thus wants to be rebuilt. Which it can't be, if the prebuilt kernel tree
 # is exported read-only for someone to run 'make install'.
 ifeq ($(INSTALL):$(wildcard $(obj)/ihex2fw),install:$(obj)/ihex2fw)

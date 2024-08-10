@@ -258,6 +258,8 @@ enum msm_camera_i2c_operation {
 #define MSM_CAM_READ_LOOP \
 	MSM_CAM_READ_LOOP
 	MSM_CAM_READ_LOOP = 3,
+	MSM_CAM_SINGLE_LOOP_READ,  /*simon added for hi556*/
+	MSM_CAM_READ_GC5025,  /*simon added for gc5025*/
 };
 
 struct msm_sensor_i2c_sync_params {

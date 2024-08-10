@@ -47,7 +47,7 @@
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #endif
 
-#define SENSOR_DRIVER_I2C "i2c_camera"
+#define SENSOR_DRIVER_I2C "camera"
 #define CAMX_SENSOR_DEV_NAME "cam-sensor-driver"
 
 enum cam_sensor_state_t {

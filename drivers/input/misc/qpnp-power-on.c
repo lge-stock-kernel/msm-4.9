@@ -34,6 +34,15 @@
 #include <linux/qpnp/qpnp-pbs.h>
 #include <linux/qpnp/qpnp-misc.h>
 #include <linux/power_supply.h>
+#if defined(CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO) || defined(CONFIG_LGE_ONE_BINARY_SKU)
+#include <linux/wakelock.h>
+#include <soc/qcom/lge/board_lge.h>
+#endif
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+#include <soc/qcom/lge/lge_handle_panic.h>
+#endif
+
 
 #define PMIC_VER_8941           0x01
 #define PMIC_VERSION_REG        0x0105
@@ -206,6 +215,9 @@ struct qpnp_pon {
 	struct delayed_work	bark_work;
 	struct dentry		*debugfs;
 	struct device_node      *pbs_dev_node;
+#ifdef CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+	struct wake_lock	chg_logo_wake_lock;
+#endif
 	int			pon_trigger_reason;
 	int			pon_power_off_reason;
 	int			num_pon_reg;
@@ -236,6 +248,9 @@ struct qpnp_pon {
 	ktime_t			kpdpwr_last_release_time;
 	struct notifier_block   pon_nb;
 	bool			legacy_hard_reset_offset;
+#ifdef CONFIG_LGE_PM
+	bool			cold_reset_flag;
+#endif
 };
 
 static int pon_ship_mode_en;
@@ -778,6 +793,51 @@ int qpnp_pon_is_warm_reset(void)
 }
 EXPORT_SYMBOL(qpnp_pon_is_warm_reset);
 
+#ifdef CONFIG_LGE_PM_SMPL_COUNTER
+/**
+ * qpnp_pon_read_poff_sts - Read PMIC power off reason.
+ *
+ * Returns >= 0 for power off reason index, < 0 for errors
+ *
+ */
+static int read_gen2_pon_off_reason(struct qpnp_pon *pon, u16 *reason,
+					int *reason_index_offset);
+int qpnp_pon_read_poff_sts(void)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+	int index, reason_index_offset, rc;
+	u16 poff_sts = 0;
+	u8 buf[2];
+
+	if (!pon)
+		return -EPROBE_DEFER;
+#ifdef CONFIG_LGE_ONE_BINARY_SKU
+	if ((lge_get_laop_operator() == OP_VZW_POSTPAID)
+			||(lge_get_laop_operator() == OP_VZW_PREPAID)) {
+		reason_index_offset = 0;
+	}
+#endif
+	if (!is_pon_gen1(pon) && pon->subtype != PON_1REG) {
+		rc = read_gen2_pon_off_reason(pon, &poff_sts,
+							&reason_index_offset);
+		if (rc)
+			return rc;
+	} else {
+		rc = regmap_bulk_read(pon->regmap, QPNP_POFF_REASON1(pon),
+					buf, 2);
+		if (rc) {
+			dev_err(&pon->pdev->dev, "Unable to read POFF_REASON regs, rc(%d)\n",
+					rc);
+			return  rc;
+		}
+		poff_sts = buf[0] | (buf[1] << 8);
+	}
+	index = ffs(poff_sts) - 1 + reason_index_offset;
+	return index;
+}
+EXPORT_SYMBOL(qpnp_pon_read_poff_sts);
+#endif
+
 /**
  * qpnp_pon_wd_config - Disable the wd in a warm reset.
  * @enable: to enable or disable the PON watch dog
@@ -981,6 +1041,25 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	pr_debug("PMIC input: code=%d, sts=0x%hhx\n",
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
+#ifdef CONFIG_LGE_PM
+	pr_err("%s: code(%d), value(%d) cold_boot(%d)\n",
+		__func__, cfg->key_code, key_status, pon->cold_reset_flag);
+#else
+	pr_err("%s: code(%d), value(%d)\n",	__func__, cfg->key_code, key_status);
+#endif
+
+#ifdef CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+	if (lge_get_boot_mode() == LGE_BOOT_MODE_CHARGERLOGO) {
+		if (wake_lock_active(&pon->chg_logo_wake_lock))
+			wake_unlock(&pon->chg_logo_wake_lock);
+		pr_info("[CHARGERLOGO MODE] active chg_logo_wake_lock during 500ms\n");
+		wake_lock_timeout(&pon->chg_logo_wake_lock, msecs_to_jiffies(500));
+	}
+#endif
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	lge_gen_key_panic(cfg->key_code, key_status);
+#endif
 
 	if (pon->kpdpwr_dbc_enable && cfg->pon_type == PON_KPDPWR) {
 		if (!key_status)
@@ -2292,6 +2371,9 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 
 	index = ffs(pon_sts) - 1;
 	cold_boot = !qpnp_pon_is_warm_reset();
+#ifdef CONFIG_LGE_PM
+	pon->cold_reset_flag = cold_boot;
+#endif
 	if (index >= ARRAY_SIZE(qpnp_pon_reason) || index < 0) {
 		dev_info(&pon->pdev->dev,
 			"PMIC@SID%d Power-on reason: Unknown and '%s' boot\n",
@@ -2418,11 +2500,18 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&pon->bark_work, bark_work_func);
 
+#ifdef CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+	wake_lock_init(&pon->chg_logo_wake_lock, WAKE_LOCK_SUSPEND, "chg_logo-pon");
+#endif
+
 	/* register the PON configurations */
 	rc = qpnp_pon_config_init(pon);
 	if (rc) {
 		dev_err(&pdev->dev,
 			"Unable to initialize PON configurations rc: %d\n", rc);
+#ifdef CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+		wake_lock_destroy(&pon->chg_logo_wake_lock);
+#endif
 		goto err_out;
 	}
 
@@ -2623,6 +2712,10 @@ static int qpnp_pon_remove(struct platform_device *pdev)
 	device_remove_file(&pdev->dev, &dev_attr_debounce_us);
 
 	cancel_delayed_work_sync(&pon->bark_work);
+
+#ifdef CONFIG_LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+	wake_lock_destroy(&pon->chg_logo_wake_lock);
+#endif
 
 	if (pon->pon_input)
 		input_unregister_device(pon->pon_input);

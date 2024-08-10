@@ -106,7 +106,7 @@ enum {
 	FORCE_INOV_DISABLE_BIT	= BIT(1),
 };
 
-static int debug_mask;
+static int debug_mask = PR_PARALLEL;
 module_param_named(debug_mask, debug_mask, int, 0600);
 
 #define pl_dbg(chip, reason, fmt, ...)				\
@@ -304,7 +304,9 @@ static ssize_t slave_pct_store(struct class *c, struct class_attribute *attr,
 	if (kstrtoul(ubuf, 10, &val))
 		return -EINVAL;
 
+#ifndef CONFIG_LGE_PM
 	chip->slave_pct = val;
+#endif
 
 	rc = validate_parallel_icl(chip, &disable);
 	if (rc < 0)
@@ -459,6 +461,9 @@ static void get_fcc_split(struct pl_data *chip, int total_ua,
 	slave_limited_ua = min(effective_total_ua, bcl_ua);
 	*slave_ua = (slave_limited_ua * chip->slave_pct) / 100;
 	*slave_ua = min(*slave_ua, chip->pl_fcc_max);
+#ifdef CONFIG_LGE_PM
+	*slave_ua = *slave_ua/50000*50000;
+#endif
 
 	/*
 	 * In stacked BATFET configuration charger's current goes
@@ -469,6 +474,25 @@ static void get_fcc_split(struct pl_data *chip, int total_ua,
 		*master_ua = max(0, total_ua);
 	else
 		*master_ua = max(0, total_ua - *slave_ua);
+#ifdef CONFIG_LGE_PM
+{	static int pre_total, pre_master, pre_slave;
+	if (pre_total != total_ua
+		|| pre_master != *master_ua
+		|| pre_slave != *slave_ua) {
+
+		pr_info("total(%d) is splitted to %d(PMI) : %d(SMB), "
+			"effective_total_ua = %d, slave_limited_ua = %d, "
+			"slave_pct = %d, hw_cc_delta_ua = %d, bcl_ua = %d\n",
+			total_ua/1000, *master_ua/1000, *slave_ua/1000,
+			effective_total_ua, slave_limited_ua,
+			chip->slave_pct, hw_cc_delta_ua, bcl_ua);
+
+		pre_total = total_ua;
+		pre_master = *master_ua;
+		pre_slave = *slave_ua;
+	}
+}
+#endif
 }
 
 static void get_fcc_stepper_params(struct pl_data *chip, int main_fcc_ua,
@@ -1170,6 +1194,19 @@ static int pl_disable_vote_callback(struct votable *votable,
 			(master_fcc_ua * 100) / total_fcc_ua,
 			(slave_fcc_ua * 100) / total_fcc_ua);
 	} else {
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+{		extern bool unified_nodes_show(const char* key, char* value);
+		char buff [16] = { 0, };
+		int  test;
+
+		if (unified_nodes_show("support_fastpl", buff)
+			&& sscanf(buff, "%d", &test) && test == 1) {
+			pr_info("FASTPL: Disabling pl by %s is not permitted "
+				"for the purpose of 2nd charger IC test\n", client);
+			return 0;
+		}
+}
+#endif
 		if (!chip->fcc_stepper_enable) {
 			if (IS_USBIN(chip->pl_mode))
 				split_settled(chip);
@@ -1316,6 +1353,28 @@ static bool is_parallel_available(struct pl_data *chip)
 
 	return true;
 }
+
+#ifdef CONFIG_LGE_PM
+static bool is_parallel_pct_changed(struct pl_data *chip)
+{
+	union power_supply_propval pval = {0, };
+	int rc;
+
+	rc = power_supply_get_property(chip->batt_psy,
+					POWER_SUPPLY_PROP_PARALLEL_MODE, &pval);
+	if (rc < 0) {
+		pr_err("Couldn't get parallel pct value rc=%d\n", rc);
+		return false;
+	}
+
+	if (pval.intval != chip->slave_pct) {
+		pr_info("Parallel split pct is changed to %d", pval.intval);
+		chip->slave_pct = pval.intval;
+		return true;
+	} else
+		return false;
+}
+#endif
 
 static void handle_main_charge_type(struct pl_data *chip)
 {
@@ -1525,6 +1584,10 @@ static void status_change_work(struct work_struct *work)
 		return;
 
 	is_parallel_available(chip);
+
+#ifdef CONFIG_LGE_PM
+	is_parallel_pct_changed(chip);
+#endif
 
 	handle_usb_change(chip);
 	handle_main_charge_type(chip);

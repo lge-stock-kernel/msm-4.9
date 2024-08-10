@@ -45,6 +45,10 @@
 #include "msm-dolby-dap-config.h"
 #include "msm-ds2-dap-config.h"
 
+#if defined(CONFIG_SND_LGE_CROSSTALK)
+#include "../dsp/lge_dsp_crosstalk.h"
+#endif
+
 #ifndef CONFIG_DOLBY_DAP
 #undef DOLBY_ADM_COPP_TOPOLOGY_ID
 #define DOLBY_ADM_COPP_TOPOLOGY_ID 0xFFFFFFFE
@@ -83,6 +87,9 @@ static bool is_custom_stereo_on;
 static bool is_ds2_on;
 static bool swap_ch;
 static int msm_ec_ref_port_id;
+#if defined(CONFIG_SND_LGE_CROSSTALK)
+static int crosstalk_mode;
+#endif
 
 #define WEIGHT_0_DB 0x4000
 /* all the FEs which can support channel mixer */
@@ -3793,6 +3800,16 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		msm_route_ec_ref_rx = 24;
 		ec_ref_port_id = AFE_PORT_ID_PRIMARY_TDM_RX_1;
 		break;
+	case 25:
+		msm_route_ec_ref_rx = 25;
+		ec_ref_port_id = INT_BT_SCO_RX;
+		break;
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
+	case 26:
+		msm_route_ec_ref_rx = 26;
+		ec_ref_port_id = AFE_PORT_ID_QUINARY_MI2S_RX;
+		break;
+#endif /* CONFIG_SND_SOC_USE_QUIN_MI2S */
 	default:
 		msm_route_ec_ref_rx = 0; /* NONE */
 		pr_err("%s EC ref rx %ld not valid\n",
@@ -3810,6 +3827,7 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
 static const char *const ec_ref_rx[] = { "None", "SLIM_RX", "I2S_RX",
 	"PRI_MI2S_TX", "SEC_MI2S_TX",
 	"TERT_MI2S_TX", "QUAT_MI2S_TX", "SEC_I2S_RX", "PROXY_RX",
@@ -3817,7 +3835,17 @@ static const char *const ec_ref_rx[] = { "None", "SLIM_RX", "I2S_RX",
 	"QUAT_TDM_RX_0", "QUAT_TDM_RX_1", "QUAT_TDM_RX_2", "SLIM_6_RX",
 	"TERT_MI2S_RX", "QUAT_MI2S_RX", "TERT_TDM_TX_0", "USB_AUDIO_RX",
 	"INT0_MI2S_RX", "INT4_MI2S_RX", "INT3_MI2S_TX", "DISPLAY_PORT",
-	"PRI_TDM_RX_1"};
+	"PRI_TDM_RX_1", "INTERNAL_BT_SCO_RX", "QUIN_MI2S_RX"};
+#else
+static const char *const ec_ref_rx[] = { "None", "SLIM_RX", "I2S_RX",
+	"PRI_MI2S_TX", "SEC_MI2S_TX",
+	"TERT_MI2S_TX", "QUAT_MI2S_TX", "SEC_I2S_RX", "PROXY_RX",
+	"SLIM_5_RX", "SLIM_1_TX", "QUAT_TDM_TX_1",
+	"QUAT_TDM_RX_0", "QUAT_TDM_RX_1", "QUAT_TDM_RX_2", "SLIM_6_RX",
+	"TERT_MI2S_RX", "QUAT_MI2S_RX", "TERT_TDM_TX_0", "USB_AUDIO_RX",
+	"INT0_MI2S_RX", "INT4_MI2S_RX", "INT3_MI2S_TX", "DISPLAY_PORT",
+	"PRI_TDM_RX_1", "INTERNAL_BT_SCO_RX"};
+#endif /* CONFIG_SND_SOC_USE_QUIN_MI2S */
 
 static const struct soc_enum msm_route_ec_ref_rx_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(ec_ref_rx), ec_ref_rx),
@@ -11433,6 +11461,16 @@ static const struct snd_kcontrol_new quin_mi2s_rx_port_mixer_controls[] = {
 	MSM_BACKEND_DAI_QUINARY_MI2S_RX,
 	MSM_BACKEND_DAI_TERTIARY_MI2S_TX, 1, 0, msm_routing_get_port_mixer,
 	msm_routing_put_port_mixer),
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
+	SOC_DOUBLE_EXT("INTERNAL_FM_TX", SND_SOC_NOPM,
+	MSM_BACKEND_DAI_QUINARY_MI2S_RX,
+	MSM_BACKEND_DAI_INT_FM_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_DOUBLE_EXT("AUX_PCM_UL_TX", SND_SOC_NOPM,
+	MSM_BACKEND_DAI_QUINARY_MI2S_RX,
+	MSM_BACKEND_DAI_AUXPCM_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+#endif /* CONFIG_SND_SOC_USE_QUIN_MI2S */
 	SOC_DOUBLE_EXT("SLIM_0_TX", SND_SOC_NOPM,
 	MSM_BACKEND_DAI_QUINARY_MI2S_RX,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
@@ -14811,6 +14849,65 @@ done:
 	return ret;
 }
 
+#if defined(CONFIG_SND_LGE_CROSSTALK)
+static int msm_routing_get_crosstalk_headset_mode_control(struct snd_kcontrol *kcontrol,
+					  struct snd_ctl_elem_value *ucontrol)
+{
+    ucontrol->value.integer.value[0] = crosstalk_mode;
+    pr_debug("%s: crosstalk_mode value: %ld\n", __func__,
+             ucontrol->value.integer.value[0]);
+    return 0;
+}
+
+static int msm_routing_put_crosstalk_headset_mode_control(struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol)
+{
+	int i, idx, be_index, port_id;
+	int ret = 0;
+	unsigned long copp;
+
+	pr_debug("%s crosstalk_mode value:%ld\n", __func__,
+				ucontrol->value.integer.value[0]);
+
+	crosstalk_mode = ucontrol->value.integer.value[0];
+
+	for (be_index = 0; be_index < MSM_BACKEND_DAI_MAX; be_index++) {
+		port_id = msm_bedais[be_index].port_id;
+		if (!msm_bedais[be_index].active)
+			continue;
+
+		for_each_set_bit(i, &msm_bedais[be_index].fe_sessions[0],
+				MSM_FRONTEND_DAI_MM_SIZE) {
+			copp = session_copp_map[i][SESSION_TYPE_RX][be_index];
+			for (idx = 0; idx < MAX_COPPS_PER_PORT; idx++) {
+				if (!test_bit(idx, &copp))
+					continue;
+
+				pr_debug("%s: crosstalk mode control of portid:%d, coppid:%d\n",
+					 __func__, port_id, idx);
+				ret = q6adm_set_crosstalk_parms(
+					port_id, idx,
+					crosstalk_mode);
+				if (ret) {
+					pr_err("%s: crosstalk mode failed, err=%d\n",
+						 __func__, ret);
+					goto done;
+				}
+			}
+		}
+	}
+done:
+	return ret;
+
+}
+
+static const struct snd_kcontrol_new crosstalk_enable_mode_controls[] = {
+	SOC_SINGLE_EXT("Crosstalk Set Headsetmode", SND_SOC_NOPM, 0,
+	3, 0, msm_routing_get_crosstalk_headset_mode_control,
+	msm_routing_put_crosstalk_headset_mode_control),
+};
+#endif
+
 static const struct snd_kcontrol_new msm_source_tracking_controls[] = {
 	{
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
@@ -15020,6 +15117,9 @@ static const char * const slim0_rx_vi_fb_tx_rch_mux_text[] = {
 
 static const char * const mi2s_rx_vi_fb_tx_mux_text[] = {
 	"ZERO", "SENARY_TX"
+#if defined(CONFIG_SND_SOC_CS35L41)
+	,"QUAT_MI2S_TX"
+#endif
 };
 
 static const char * const int4_mi2s_rx_vi_fb_tx_mono_mux_text[] = {
@@ -15040,6 +15140,9 @@ static const int const slim0_rx_vi_fb_tx_rch_value[] = {
 
 static const int const mi2s_rx_vi_fb_tx_value[] = {
 	MSM_BACKEND_DAI_MAX, MSM_BACKEND_DAI_SENARY_MI2S_TX
+#if defined(CONFIG_SND_SOC_CS35L41)
+	,MSM_BACKEND_DAI_QUATERNARY_MI2S_TX
+#endif
 };
 
 static const int const int4_mi2s_rx_vi_fb_tx_mono_ch_value[] = {
@@ -15060,10 +15163,17 @@ static const struct soc_enum slim0_rx_vi_fb_rch_mux_enum =
 	ARRAY_SIZE(slim0_rx_vi_fb_tx_rch_mux_text),
 	slim0_rx_vi_fb_tx_rch_mux_text, slim0_rx_vi_fb_tx_rch_value);
 
+#if defined(CONFIG_SND_SOC_CS35L41)
+static const struct soc_enum mi2s_rx_vi_fb_mux_enum =
+	SOC_VALUE_ENUM_DOUBLE(SND_SOC_NOPM, MSM_BACKEND_DAI_QUATERNARY_MI2S_RX, 0, 0,
+	ARRAY_SIZE(mi2s_rx_vi_fb_tx_mux_text),
+	mi2s_rx_vi_fb_tx_mux_text, mi2s_rx_vi_fb_tx_value);
+#else
 static const struct soc_enum mi2s_rx_vi_fb_mux_enum =
 	SOC_VALUE_ENUM_DOUBLE(SND_SOC_NOPM, MSM_BACKEND_DAI_PRI_MI2S_RX, 0, 0,
 	ARRAY_SIZE(mi2s_rx_vi_fb_tx_mux_text),
 	mi2s_rx_vi_fb_tx_mux_text, mi2s_rx_vi_fb_tx_value);
+#endif
 
 static const struct soc_enum int4_mi2s_rx_vi_fb_mono_ch_mux_enum =
 	SOC_VALUE_ENUM_DOUBLE(SND_SOC_NOPM, MSM_BACKEND_DAI_INT4_MI2S_RX, 0, 0,
@@ -18331,7 +18441,9 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_DL_HL"},
 	{"TERT_MI2S_RX", NULL, "TERT_MI2S_DL_HL"},
 	{"QUAT_MI2S_UL_HL", NULL, "QUAT_MI2S_TX"},
-
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
+	{"QUIN_MI2S_UL_HL", NULL, "QUIN_MI2S_TX"},
+#endif /* CONFIG_SND_SOC_USE_QUIN_MI2S */
 	{"PRI_TDM_TX_0_UL_HL", NULL, "PRI_TDM_TX_0"},
 	{"PRI_TDM_TX_1_UL_HL", NULL, "PRI_TDM_TX_1"},
 	{"PRI_TDM_TX_2_UL_HL", NULL, "PRI_TDM_TX_2"},
@@ -19058,6 +19170,10 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"QUIN_MI2S_RX Port Mixer", "QUIN_MI2S_TX", "QUIN_MI2S_TX"},
 	{"QUIN_MI2S_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 	{"QUIN_MI2S_RX Port Mixer", "SLIM_8_TX", "SLIMBUS_8_TX"},
+#ifdef CONFIG_SND_SOC_USE_QUIN_MI2S
+	{"QUIN_MI2S_RX Port Mixer", "AUX_PCM_UL_TX", "AUX_PCM_TX"},
+	{"QUIN_MI2S_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
+#endif /* CONFIG_SND_SOC_USE_QUIN_MI2S */
 	{"QUIN_MI2S_RX", NULL, "QUIN_MI2S_RX Port Mixer"},
 
 	/* Backend Enablement */
@@ -19167,11 +19283,17 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"SLIM0_RX_VI_FB_LCH_MUX", "SLIM4_TX", "SLIMBUS_4_TX"},
 	{"SLIM0_RX_VI_FB_RCH_MUX", "SLIM4_TX", "SLIMBUS_4_TX"},
 	{"PRI_MI2S_RX_VI_FB_MUX", "SENARY_TX", "SENARY_TX"},
+#if defined(CONFIG_SND_SOC_CS35L41)
+	{"PRI_MI2S_RX_VI_FB_MUX", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
+#endif
 	{"INT4_MI2S_RX_VI_FB_MONO_CH_MUX", "INT5_MI2S_TX", "INT5_MI2S_TX"},
 	{"INT4_MI2S_RX_VI_FB_STEREO_CH_MUX", "INT5_MI2S_TX", "INT5_MI2S_TX"},
 	{"SLIMBUS_0_RX", NULL, "SLIM0_RX_VI_FB_LCH_MUX"},
 	{"SLIMBUS_0_RX", NULL, "SLIM0_RX_VI_FB_RCH_MUX"},
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_RX_VI_FB_MUX"},
+#if defined(CONFIG_SND_SOC_CS35L41)
+	{"QUAT_MI2S_RX", NULL, "PRI_MI2S_RX_VI_FB_MUX"},
+#endif
 	{"INT4_MI2S_RX", NULL, "INT4_MI2S_RX_VI_FB_MONO_CH_MUX"},
 	{"INT4_MI2S_RX", NULL, "INT4_MI2S_RX_VI_FB_STEREO_CH_MUX"},
 	{"PRI_TDM_TX_0", NULL, "BE_IN"},
@@ -19900,6 +20022,10 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 
 	snd_soc_add_platform_controls(platform, aptx_dec_license_controls,
 					ARRAY_SIZE(aptx_dec_license_controls));
+#if defined(CONFIG_SND_LGE_CROSSTALK)
+    snd_soc_add_platform_controls(platform, crosstalk_enable_mode_controls,
+                    ARRAY_SIZE(crosstalk_enable_mode_controls));
+#endif
 	snd_soc_add_platform_controls(platform, stereo_channel_reverse_control,
 				ARRAY_SIZE(stereo_channel_reverse_control));
 	snd_soc_add_platform_controls(platform,

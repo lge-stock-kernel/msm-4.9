@@ -62,6 +62,11 @@ static unsigned long tx_digital_gain_reg[] = {
 
 #define SDM660_TX_UNMUTE_DELAY_MS 40
 static int tx_unmute_delay = SDM660_TX_UNMUTE_DELAY_MS;
+#ifdef CONFIG_MACH_LGE
+static int tapan_tx_mute = 0;
+static bool reversed_dmic = false;
+#endif
+
 module_param(tx_unmute_delay, int, 0664);
 MODULE_PARM_DESC(tx_unmute_delay, "delay to unmute the tx path");
 
@@ -226,6 +231,16 @@ static int msm_dig_cdc_put_dec_enum(struct snd_kcontrol *kcontrol,
 	dev_dbg(w->dapm->dev, "%s(): widget = %s decimator = %u dec_mux = %u\n"
 		, __func__, w->name, decimator, dec_mux);
 
+#ifdef CONFIG_MACH_LGE
+	if(reversed_dmic) {
+		if(dec_mux == 5 || dec_mux == 4) {
+			ucontrol->value.enumerated.item[0] = (strcmp(dec_mux_text[dec_mux], "DMIC1"))? (dec_mux-1) : (dec_mux+1);
+			dec_mux = ucontrol->value.enumerated.item[0];
+		}
+		dev_dbg(w->dapm->dev, "%s(): Using reversed DMIC (widget = %s decimator = %u dec_mux = %u)\n"
+			, __func__, w->name, decimator, dec_mux);
+	}
+#endif
 	switch (decimator) {
 	case 1:
 	case 2:
@@ -308,8 +323,10 @@ static int msm_dig_cdc_codec_config_compander(struct snd_soc_codec *codec,
 		if (dig_cdc->set_compander_mode)
 			dig_cdc->set_compander_mode(dig_cdc->handle, 0x08);
 		/* Enable Compander Clock */
+#ifndef CONFIG_MACH_LGE
 		snd_soc_update_bits(codec,
 			MSM89XX_CDC_CORE_COMP0_B2_CTL, 0x0F, 0x09);
+#endif
 		snd_soc_update_bits(codec,
 			MSM89XX_CDC_CORE_CLK_RX_B2_CTL, 0x01, 0x01);
 		if (dig_cdc->comp_enabled[MSM89XX_RX1]) {
@@ -330,8 +347,13 @@ static int msm_dig_cdc_codec_config_compander(struct snd_soc_codec *codec,
 		usleep_range(1000, 1100);
 		snd_soc_update_bits(codec,
 			MSM89XX_CDC_CORE_COMP0_B3_CTL, 0xFF, 0x28);
+#ifdef CONFIG_MACH_LGE
+		snd_soc_update_bits(codec,
+			MSM89XX_CDC_CORE_COMP0_B2_CTL, 0xF0, 0xF0);
+#else
 		snd_soc_update_bits(codec,
 			MSM89XX_CDC_CORE_COMP0_B2_CTL, 0xF0, 0xB0);
+#endif
 
 		/* Enable Compander GPIO */
 		if (dig_cdc->codec_hph_comp_gpio)
@@ -684,6 +706,43 @@ ret:
 	return 0;
 }
 
+#ifdef CONFIG_MACH_LGE
+static const char *const tapan_tx_mute_text[] = {"unmute", "mute"};
+static const struct soc_enum tapan_tx_mute_enum[] = {
+	SOC_ENUM_SINGLE_EXT(2, tapan_tx_mute_text),
+};
+
+static int tapan_tx_mute_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("%s: tapan_tx_mute  = %d", __func__, tapan_tx_mute);
+	ucontrol->value.integer.value[0] = tapan_tx_mute;
+	return 0;
+}
+static int tapan_tx_mute_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	u16 tx_vol_ctl_reg0 = MSM89XX_CDC_CORE_TX1_VOL_CTL_CFG;
+	u16 tx_vol_ctl_reg1 = MSM89XX_CDC_CORE_TX2_VOL_CTL_CFG;
+	switch (ucontrol->value.integer.value[0]) {
+		case 0:
+			snd_soc_update_bits(codec, tx_vol_ctl_reg0, 0x01, 0);
+			snd_soc_update_bits(codec, tx_vol_ctl_reg1, 0x01, 0);
+			break;
+		case 1:
+			snd_soc_update_bits(codec, tx_vol_ctl_reg0, 0x01, 1);
+			snd_soc_update_bits(codec, tx_vol_ctl_reg1, 0x01, 1);
+			break;
+		default:
+			break;
+	}
+	tapan_tx_mute = ucontrol->value.integer.value[0];
+	pr_debug("%s: tapan_tx_mute = %d\n", __func__, tapan_tx_mute);
+	return 0;
+}
+#endif
+
 static int msm_dig_cdc_compander_get(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
 {
@@ -758,7 +817,11 @@ static int msm_dig_cdc_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params,
 				 struct snd_soc_dai *dai)
 {
+#ifdef CONFIG_MACH_LGE
+	u8 tx_fs_rate, rx_fs_rate, rx_clk_fs_rate, rx_comp_peak;
+#else
 	u8 tx_fs_rate, rx_fs_rate, rx_clk_fs_rate;
+#endif
 	int ret;
 
 	dev_dbg(dai->codec->dev,
@@ -771,32 +834,50 @@ static int msm_dig_cdc_hw_params(struct snd_pcm_substream *substream,
 		tx_fs_rate = 0x00;
 		rx_fs_rate = 0x00;
 		rx_clk_fs_rate = 0x00;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0x7;
+#endif
 		break;
 	case 16000:
 		tx_fs_rate = 0x20;
 		rx_fs_rate = 0x20;
 		rx_clk_fs_rate = 0x01;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0x8;
+#endif
 		break;
 	case 32000:
 		tx_fs_rate = 0x40;
 		rx_fs_rate = 0x40;
 		rx_clk_fs_rate = 0x02;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0x9;
+#endif
 		break;
 	case 44100:
 	case 48000:
 		tx_fs_rate = 0x60;
 		rx_fs_rate = 0x60;
 		rx_clk_fs_rate = 0x03;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0xA;
+#endif
 		break;
 	case 96000:
 		tx_fs_rate = 0x80;
 		rx_fs_rate = 0x80;
 		rx_clk_fs_rate = 0x04;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0xB;
+#endif
 		break;
 	case 192000:
 		tx_fs_rate = 0xA0;
 		rx_fs_rate = 0xA0;
 		rx_clk_fs_rate = 0x05;
+#ifdef CONFIG_MACH_LGE
+		rx_comp_peak = 0xC;
+#endif
 		break;
 	default:
 		dev_err(dai->codec->dev,
@@ -820,6 +901,10 @@ static int msm_dig_cdc_hw_params(struct snd_pcm_substream *substream,
 				ret);
 			return ret;
 		}
+#ifdef CONFIG_MACH_LGE
+		snd_soc_update_bits(dai->codec,
+			MSM89XX_CDC_CORE_COMP0_B2_CTL, 0x0F, rx_comp_peak);
+#endif
 		break;
 	default:
 		dev_err(dai->codec->dev,
@@ -1416,6 +1501,12 @@ static int msm_dig_cdc_soc_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_ignore_suspend(dapm, "PDM_OUT_RX3");
 
 	snd_soc_dapm_sync(dapm);
+#ifdef CONFIG_MACH_LGE
+	reversed_dmic = of_property_read_bool(codec->dev->of_node, "lge,use-reversed-dmic");
+	if (reversed_dmic) {
+		pr_debug("%s: Using reversed DMIC by setting reversed_dmic = %d\n", __func__, reversed_dmic);
+	}
+#endif
 
 	return 0;
 }
@@ -1948,6 +2039,10 @@ static const struct soc_enum cf_decsva_enum =
 	SOC_ENUM_SINGLE(MSM89XX_CDC_CORE_TX5_MUX_CTL, 4, 3, cf_text);
 
 static const struct snd_kcontrol_new msm_dig_snd_controls[] = {
+#ifdef CONFIG_MACH_LGE
+	SOC_ENUM_EXT("TX_VOL_CTL_MUTE", tapan_tx_mute_enum[0],
+	tapan_tx_mute_get, tapan_tx_mute_put),
+#endif
 	SOC_SINGLE_SX_TLV("DEC1 Volume",
 		MSM89XX_CDC_CORE_TX1_VOL_CTL_GAIN,
 		0, -84, 40, digital_gain),

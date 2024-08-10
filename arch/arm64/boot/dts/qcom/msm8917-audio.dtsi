@@ -122,11 +122,13 @@
 				<&pmic_analog_codec>;
 		asoc-codec-names = "msm-stub-codec.1", "msm-dig-codec",
 					"analog-codec";
+        /*
 		asoc-wsa-codec-names = "wsa881x-i2c-codec.2-000f";
 		asoc-wsa-codec-prefixes = "SpkrMono";
 		msm-vdd-wsa-switch-supply = <&pm8937_l5>;
 		qcom,msm-vdd-wsa-switch-voltage = <1800000>;
 		qcom,msm-vdd-wsa-switch-current = <10000>;
+        */
 	};
 
 	cdc_us_euro_sw: msm_cdc_pinctrl_us_euro_sw {
@@ -156,7 +158,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		wsa881x_i2c_f: wsa881x-i2c-codec@f {
-			status = "okay";
+			status = "disabled";
 			compatible = "qcom,wsa881x-i2c-codec";
 			reg = <0x0f>;
 			qcom,wsa-analog-vi-gpio = <&wsa881x_analog_vi_gpio>;
@@ -165,7 +167,7 @@
 				<&wsa881x_analog_reset_gpio>;
 		};
 		wsa881x_i2c_45: wsa881x-i2c-codec@45 {
-			status = "okay";
+			status = "disabled";
 			compatible = "qcom,wsa881x-i2c-codec";
 			reg = <0x45>;
 		};

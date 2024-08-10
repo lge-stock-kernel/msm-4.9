@@ -1,0 +1,13 @@
+&i2c_2 {
+	sgm37603a@36 {
+		status = "ok";
+		compatible = "sgm37603a";
+		reg = <0x36>;
+		sgm37603a,lcd_bl_en = <&tlmm 99 0>;
+		sgm37603a,max_current = <0x00>; //25mA
+		sgm37603a,min_brightness = <0x01>;
+		sgm37603a,default_brightness = <0xAA>;
+		sgm37603a,max_brightness = <3276>;
+		//sgm37603a,enable_cabc = <1>; // HW_REV_1_0
+	};
+};

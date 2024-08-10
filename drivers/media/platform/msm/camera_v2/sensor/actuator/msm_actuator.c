@@ -26,9 +26,11 @@ DEFINE_MSM_MUTEX(msm_actuator_mutex);
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #endif
 
-#define PARK_LENS_LONG_STEP 7
-#define PARK_LENS_MID_STEP 5
-#define PARK_LENS_SMALL_STEP 3
+//LGE_CHANGE_S, Fix Tick-noise
+#define PARK_LENS_LONG_STEP 1
+#define PARK_LENS_MID_STEP 1
+#define PARK_LENS_SMALL_STEP 1
+//LGE_CHANGE_E, Fix Tick-noise
 #define MAX_QVALUE 4096
 
 static struct v4l2_file_operations msm_actuator_v4l2_subdev_fops;
@@ -844,7 +846,11 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 	next_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
 	while (next_lens_pos) {
 		/* conditions which help to reduce park lens time */
-		if (next_lens_pos > (a_ctrl->park_lens.max_step *
+		//LGE_CHANGE_S, Fix Tick-noise
+		if (next_lens_pos > (a_ctrl->step_position_table[a_ctrl->total_steps] / 2)) {
+			next_lens_pos = (uint16_t)(a_ctrl->step_position_table[a_ctrl->total_steps] * 1 / 2);
+		} else if (next_lens_pos > (a_ctrl->park_lens.max_step *
+		//LGE_CHANGE_E, Fix Tick-noise
 			PARK_LENS_LONG_STEP)) {
 			next_lens_pos = next_lens_pos -
 				(a_ctrl->park_lens.max_step *
@@ -1990,8 +1996,13 @@ static int32_t msm_actuator_platform_probe(struct platform_device *pdev)
 	}
 	rc = msm_sensor_driver_get_gpio_data(&(msm_actuator_t->gconf),
 		(&pdev->dev)->of_node);
+#ifndef CONFIG_MACH_LGE
 	if (rc <= 0) {
 		pr_err("%s: No/Error Actuator GPIOs\n", __func__);
+#else
+	if (rc < 0) {
+		pr_err("%s: No/Error Actuator GPIOs\n", __func__);
+#endif
 	} else {
 		msm_actuator_t->cam_pinctrl_status = 1;
 		rc = msm_camera_pinctrl_init(

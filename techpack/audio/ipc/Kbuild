@@ -36,6 +36,12 @@ ifeq ($(KERNEL_BUILD), 1)
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
+	ifeq ($(CONFIG_MACH_LGE), y)
+		include $(AUDIO_ROOT)/config/$(TARGET_PRODUCT)_auto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/$(TARGET_PRODUCT)_autoconf.h
+$(info ipc/Kbuild LGE config)
+	else
 	ifeq ($(CONFIG_ARCH_SDM845), y)
 		include $(AUDIO_ROOT)/config/sdm845auto.conf
 		export
@@ -65,6 +71,8 @@ ifeq ($(KERNEL_BUILD), 0)
 		include $(AUDIO_ROOT)/config/sdm450auto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sdm450autoconf.h
+		endif
+$(info QCT config)
 	endif
 endif
 

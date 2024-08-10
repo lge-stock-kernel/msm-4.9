@@ -2202,6 +2202,8 @@ static int restart_notifier_cb(struct notifier_block *this,
 	 * processing.  We do not wat to access the bam hardware during SSR
 	 * because a watchdog crash from a bus stall would likely occur.
 	 */
+	pr_err("%s: noti code= %ld \n",__func__, code);
+
 	if (code == SUBSYS_BEFORE_SHUTDOWN) {
 		BAM_DMUX_LOG("%s: begin\n", __func__);
 		in_global_reset = 1;
@@ -2477,6 +2479,11 @@ static void bam_dmux_smsm_cb(void *priv, uint32_t old_state, uint32_t new_state)
 {
 	static int last_processed_state;
 	int rcu_id;
+
+	if(in_global_reset) {
+		BAM_DMUX_LOG("%s: in SSR bail\n",__func__);
+		return;
+	}
 
 	rcu_id = srcu_read_lock(&bam_dmux_srcu);
 	mutex_lock(&smsm_cb_lock);

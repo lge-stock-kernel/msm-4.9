@@ -4,3 +4,10 @@ config MSM_MDSS_PLL
 	It provides support for DSI, eDP and HDMI interface pll programming on MDSS
 	hardware. It also handles the pll specific resources and turn them on/off when
 	mdss pll client tries to enable/disable pll clocks.
+
+config LGE_DISPLAY_COMMON
+	depends on MSM_MDSS_PLL
+	bool "Use LGE DISPLAY COMMON"
+	---help---
+	The LGE DISPLAY COMMON provides support for common display features
+	made by LGE.

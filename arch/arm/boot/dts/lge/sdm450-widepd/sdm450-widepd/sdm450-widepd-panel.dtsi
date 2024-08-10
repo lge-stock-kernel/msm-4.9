@@ -1,0 +1,229 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../sdm450-widepd_common/sdm450-widepd_common-panel.dtsi"
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dsi {
+	hw-config = "single_dsi";
+};
+
+&dsi_boe_incell_ili9881h_hd_vid {
+	lge,panel-type = "BOE-ILI9881H";
+	lge,panel-id = <0>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <4095>;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+};
+
+&dsi_cpt_incell_ft8006p_hd_vid {
+	lge,panel-type = "CPT-FT8006P";
+	lge,panel-id = <2>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <4095>;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+};
+
+&pmi632_gpios {
+    pwm_out {
+        pwm_out_default: pwm_out_default {
+            pins = "gpio6"; /* GPIO 6 */
+            function = "func1"; /* Special Function 1 */
+            bias-pull-up; /* Pull Up */
+            power-source = <0>; /* VIN0 */
+            output-low; /* digital output, no invert */
+            qcom,drive-strength = <3>; /* LOW strength */
+            drive-push-pull; /* CMOS */
+        };
+    };
+};
+
+&dsi_anx7625_1080p_video {
+	lge,panel-type = "ANX7625_MIPI";
+	lge,panel-id = <3>;
+
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <1000>;
+	qcom,mdss-dsi-bl-pwm-pmi;
+	pwms = <&pmi632_pwm 3 1000000>;
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <4095>;
+	qcom,mdss-dsi-pwm-gpio = <&pmi632_gpios 6 0>;
+	//pinctrl-names = "default";
+	//pinctrl-0 = <&pwm_out_default>;
+	//qcom,panel-supply-entries = <&dsi_panel_pwr_supply_widepd>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_anx7625_1080p_video>;
+	/delete-property/pinctrl-names;
+	/delete-property/pinctrl-0;
+	/delete-property/pinctrl-1;
+	/delete-property/qcom,regulator-ldo-mode;
+	/delete-property/qcom,platform-reset-gpio;
+	/delete-property/lge,extra-gpio-names;
+	/delete-property/lge,gpio-touch_reset;
+	/delete-property/lge,gpio-dsv_vsn_en;
+	/delete-property/lge,gpio-dsv_vsp_en;
+	lge,extra-gpio-names = "led_boost_en", "led_en";
+	lge,gpio-led_boost_en = <&tlmm 62 0>;
+	lge,gpio-led_en = <&tlmm 0 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm_out_default>;
+};
+
+&soc {
+    i2c@7af5000 { /* BLSP2 QUP1 */
+        anx7625@58 {
+            compatible = "analogix,anx7625";
+            status = "ok";
+            reg = <0x58>;
+
+            analogix,reset-gpio = <&tlmm 47 0x00>;
+            //analogix,irq-gpio = <&tlmm 43 0x00>;
+            analogix,p-dwn-gpio = <&tlmm 16 0x00>;
+            //analogix,cbl-det-gpio = <&tlmm 8 0x00>;
+            analogix,mux-mipi_sw_sel =  <&tlmm 59 0x00>;
+            analogix,mux-mipi_sw_oe =  <&tlmm 60 0x00>;
+            gpio_lcd_3v3_buck =  <&tlmm 20 0x00>;
+            //analogix,i2c-pull-up = <1>;
+            vdd_1p0-supply = <&pm8953_l1>;
+            vdd_1p8-supply = <&pm8953_l4>;
+            i2c_vdd_1p8-supply = <&pm8953_l17>;
+            avdd_3p3-supply = <&pm8953_l11>;
+            level_shifter_3p3-supply = <&pm8953_l18>;
+            analogix,vdd10-name = "vdd_1p0";
+            analogix,vdd18-name = "vdd_1p8";
+            analogix,avdd33-name = "avdd_3p3";
+            analogix,i2c_vdd18-name = "i2c_vdd_1p8";
+            analogix,level_shifter-name = "level_shifter_3p3";
+            pinctrl-names = "pmx_anx_int_active", "pmx_anx_int_sleep";
+//            pinctrl-0 = <&sp_rst_active
+//                         &sp_isr_active
+//                         &sp_pdwn_active
+//                         &sp_cbl_det_active>;
+//            pinctrl-1 = <&sp_rst_suspend
+//                         &sp_isr_suspend
+//                         &sp_pdwn_suspend
+//                         &sp_cbl_det_suspend>;
+            pinctrl-0 = <&sp_rst_active
+                         &sp_pdwn_active>;
+			pinctrl-1 = <&sp_rst_suspend
+                         &sp_pdwn_suspend>;
+        };
+    };
+
+	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "vddio";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-post-on-sleep = <1>;
+			regulator-always-on;
+		};
+	};
+
+    dsi_panel_pwr_supply_widepd: dsi_panel_pwr_supply_widepd {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        qcom,panel-supply-entry@1 {
+            reg = <1>;
+            qcom,supply-name = "vddio";
+            qcom,supply-min-voltage = <1800000>;
+            qcom,supply-max-voltage = <1800000>;
+            qcom,supply-enable-load = <100000>;
+            qcom,supply-disable-load = <100>;
+            qcom,supply-post-on-sleep = <1>;
+            regulator-always-on;
+        };
+    };
+};
+
+&i2c_1 { /* BLSP1 QUP1 */
+
+	anx7580@54 {
+		compatible = "analogix,anx7580";
+		status = "ok";
+		reg = <0x54>;
+		analogix,reset-gpio = <&tlmm 101 0x00>; // RESETN, ANX7580_RST_N
+		analogix,p-dwn-gpio = <&tlmm 102 0x00>; // CHIP_POWER_UP, ANX7580_EN
+		vdd_1p0-supply = <&pm8953_l1>;
+		vdd_1p8-supply = <&pm8953_l4>;
+		avdd_3p3-supply = <&pm8953_l18>;
+		analogix,vdd10-name = "vdd_1p0";
+		analogix,vdd18-name = "vdd_1p8";
+		analogix,avdd33-name = "avdd_3p3";
+
+		pinctrl-names = "pmx_anx_int_active", "pmx_anx_int_sleep";
+
+		pinctrl-0 = <&sp2_rst_active
+		  &sp2_pdwn_active>;
+		pinctrl-1 = <&sp2_rst_suspend
+		  &sp2_pdwn_suspend>;
+	};
+};
+
+
+&mdss_fb0 {
+	/delete-property/ qcom,mdss-fb-splash-logo-enabled;
+};
+
+&pm8953_l17 {
+	regulator-min-microvolt = <1800000>;
+	regulator-max-microvolt = <1800000>;
+	qcom,init-voltage = <1800000>;
+	status = "okay";
+};
+&pm8953_l18 {
+	regulator-min-microvolt = <3300000>;
+	regulator-max-microvolt = <3300000>;
+	qcom,init-voltage = <3300000>;
+	status = "okay";
+};
+
+&eldo2_8953 {
+    status = "disabled";
+};
+
+&pmi632_pwm {
+	status = "okay";
+    qcom,lut-patterns = <0>;
+
+	lpg@1 {
+        qcom,ramp-high-index = <47>;
+    };
+
+	lpg@2 {
+        qcom,ramp-high-index = <47>;
+    };
+
+	lpg@3 {
+        qcom,ramp-high-index = <47>;
+    };
+
+	lpg@4 {
+        qcom,ramp-high-index = <47>;
+    };
+};

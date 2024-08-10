@@ -117,6 +117,7 @@ static void swap_slot_free_notify(struct page *page)
 static void end_swap_bio_read(struct bio *bio)
 {
 	struct page *page = bio->bi_io_vec[0].bv_page;
+	struct task_struct *waiter = bio->bi_private;
 
 	if (bio->bi_error) {
 		SetPageError(page);
@@ -132,7 +133,9 @@ static void end_swap_bio_read(struct bio *bio)
 	swap_slot_free_notify(page);
 out:
 	unlock_page(page);
+	WRITE_ONCE(bio->bi_private, NULL);
 	bio_put(bio);
+	wake_up_process(waiter);
 }
 
 int generic_swapfile_activate(struct swap_info_struct *sis,
@@ -237,10 +240,14 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	int ret = 0;
 
-	if (try_to_free_swap(page)) {
-		unlock_page(page);
-		goto out;
-	}
+#ifdef CONFIG_LATE_UNMAP
+	if (!page_mapped(page))
+#endif
+		if (try_to_free_swap(page)) {
+			unlock_page(page);
+			goto out;
+		}
+
 	if (frontswap_store(page) == 0) {
 		set_page_writeback(page);
 		unlock_page(page);
@@ -332,13 +339,15 @@ out:
 	return ret;
 }
 
-int swap_readpage(struct page *page)
+int swap_readpage(struct page *page, bool synchronous)
 {
 	struct bio *bio;
 	int ret = 0;
 	struct swap_info_struct *sis = page_swap_info(page);
+	blk_qc_t qc;
+	struct block_device *bdev;
 
-	VM_BUG_ON_PAGE(!PageSwapCache(page), page);
+	VM_BUG_ON_PAGE(!PageSwapCache(page) && !synchronous, page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(PageUptodate(page), page);
 	if (frontswap_load(page) == 0) {
@@ -375,9 +384,23 @@ int swap_readpage(struct page *page)
 		ret = -ENOMEM;
 		goto out;
 	}
+	bdev = bio->bi_bdev;
+	bio->bi_private = current;
 	bio_set_op_attrs(bio, REQ_OP_READ, 0);
 	count_vm_event(PSWPIN);
-	submit_bio(bio);
+	bio_get(bio);
+	qc = submit_bio(bio);
+	while (synchronous) {
+		set_current_state(TASK_UNINTERRUPTIBLE);
+		if (!READ_ONCE(bio->bi_private))
+			break;
+
+		if (!blk_poll(bdev_get_queue(bdev), qc))
+			break;
+	}
+	__set_current_state(TASK_RUNNING);
+	bio_put(bio);
+
 out:
 	return ret;
 }

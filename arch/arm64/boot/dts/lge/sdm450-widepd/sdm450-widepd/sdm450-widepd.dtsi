@@ -1,0 +1,41 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/msm-clocks-8953.h>
+
+#include "../sdm450-widepd_common/sdm450-widepd_common.dtsi"
+#include "sdm450-widepd-pinctrl.dtsi"
+#include "sdm450-widepd-panel.dtsi"
+#include "sdm450-widepd-misc.dtsi"
+#include "sdm450-widepd-pm.dtsi"
+#include "sdm450-widepd-sound.dtsi"
+#include "sdm450-widepd-connectivity.dtsi"
+#include "sdm450-widepd-nfc.dtsi"
+#include "sdm450-widepd-tdmb.dtsi"
+#include "sdm450-widepd-touch.dtsi"
+#include "sdm450-widepd-fingerprint.dtsi"
+#include "sdm450-widepd-sensor.dtsi"
+#include "sdm450-widepd-usb.dtsi"
+
+&firmware {
+	android {
+		compatible = "android,firmware";
+		fstab {
+			compatible = "android,fstab";
+			OP {
+				status = "disabled";
+			};
+		};
+	};
+};

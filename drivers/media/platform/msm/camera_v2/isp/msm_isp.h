@@ -478,6 +478,9 @@ struct msm_vfe_axi_stream {
 	uint32_t composite_irq[MSM_ISP_COMP_IRQ_MAX];
 	int lpm_mode;
 	struct msm_isp_pending_buf_info pending_buf_info;
+
+	uint32_t last_frame_id; // LGE_CHANGE, Ieb5ecfe6ec7e597e08e93665a7154f8a6a005edb
+
 };
 
 struct msm_vfe_axi_composite_info {

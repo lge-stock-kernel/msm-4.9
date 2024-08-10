@@ -1,0 +1,57 @@
+config LGE_PM_VENEER_PSY
+	bool "Apply LGE veneer psy"
+	depends on LGE_PM
+	default n
+	help
+	  Say Y here enable support lge veneer psy
+
+config LGE_PM_CCD
+	bool "support Charging Control Daemon"
+	depends on LGE_PM
+	default n
+	help
+	  Say Y to using Charging Control Daemon(CCD)
+
+config LGE_PM_QNOVO_QNS
+	bool "QNOVO QNS driver"
+	default n
+	help
+	  Say Y here to enable the QNS engine. Qnovo driver
+	  accepts pulse parameters via sysfs entries and programs.
+	  It also allows userspace code to read diagnostics of voltage
+	  and current measured during certain phases of the pulses.
+
+config LGE_PM_BRINGUP
+	bool "support LGE PM Bringup"
+	depends on LGE_PM
+	default n
+	help
+	  Say Y to using LGE PM Bringup
+
+config LGE_PM_BATTID_REDETECTION
+	bool "Apply battery id re-detection"
+	depends on LGE_PM_VENEER_PSY
+	default n
+	help
+	  Say Y here enable support battery re-detection
+
+config LGE_PM_USBID_RE_READ
+	bool "Apply USB id re-read"
+	depends on LGE_PM_VENEER_PSY
+	default n
+	help
+	  Say Y here enable USB ID re-read
+
+config LGE_PM_LAOP_ATT_CRK_SIM_BASED_SWITCHING
+	bool "Apply ATT-CRK SIM BASED Operator Swiching"
+	depends on LGE_PM_VENEER_PSY
+	default n
+	help
+	  Say Y to here enable support floated charger & slow charger detection by ATT-CRK SIM BASED Operator Swiching
+
+config LGE_PM_INBOX_TA_AICL_WA
+	bool "Apply INBOX_TA_AICL_WA"
+	depends on LGE_PM_VENEER_PSY
+	default n
+	help
+	  Say Y to here enable support inbox ta aicl W/A

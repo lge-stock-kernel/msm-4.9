@@ -238,6 +238,14 @@ config CPU_BOOST
 	  - Migration of important threads from one CPU to another.
 
 	  If in doubt, say N.
+	  
+config LGE_MULTI_INPUT_BOOST
+	bool "multi input boost to improve touch performance"
+	depends on CPU_BOOST
+	help
+	  Set Min. CPU Clock to input_boost_freq with scheduler boost
+	  between input_boost_ms and MAX_MULTI_BOOST,
+	  then keep Min. CPU Clock to multi_boost_freq until the last input event.
 
 config CPU_FREQ_GOV_SCHEDUTIL
 	bool "'schedutil' cpufreq policy governor"

@@ -42,6 +42,7 @@
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 #include "msm-qti-pp-config.h"
+#include "lge_dsp_sound_mabl.h"
 
 enum stream_state {
 	IDLE = 0,
@@ -2028,6 +2029,113 @@ static int msm_pcm_add_chmix_cfg_controls(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+#ifdef CONFIG_SND_LGE_MABL
+static int gfade_effect = 0;
+static int msm_pcm_playback_lge_fade_ctl_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_pcm_usr *fade_info = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+		fade_info->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+
+	pr_debug("%s\n", __func__);
+	if (!substream) {
+		pr_err("%s substream not found\n", __func__);
+		return -ENODEV;
+	}
+	if (!substream->runtime) {
+		pr_err("%s substream runtime not found\n", __func__);
+		return 0;
+	}
+	prtd = substream->runtime->private_data;
+	if (prtd)
+		ucontrol->value.integer.value[0] = gfade_effect;
+	return 0;
+}
+
+static int msm_pcm_playback_lge_fade_ctl_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	//	u64 fe_id = kcontrol->private_value;
+	int ret = 0;
+	int rc;
+
+	struct snd_pcm_usr *fade_info = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+		fade_info->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+	int fade_type = (int)ucontrol->value.integer.value[0];
+
+	gfade_effect  = fade_type;
+	if (!substream || substream->runtime == NULL) {
+		pr_debug("%s: [FADE] stream is not open status\n", __func__);
+		return -EINVAL;
+	}
+	else {
+		prtd = substream->runtime->private_data;
+	}
+
+	pr_info("+++++++++++++++++++++++++++++++++++++\n");
+	pr_info("%s: [FADE] param_id %d value %d\n", __func__, (int)ucontrol->value.integer.value[0], (int)ucontrol->value.integer.value[1]);
+	pr_info("+++++++++++++++++++++++++++++++++++++\n");
+
+	if (prtd && prtd->audio_client) {
+		rc = q6asm_set_lge_fadeEffect(prtd->audio_client,fade_type);
+		if (rc < 0) {
+			pr_err("%s: apr command failed rc=%d\n",
+					__func__, rc);
+		}
+	}
+
+	return ret;
+}
+
+static int msm_pcm_playback_lge_fade_ctl_info(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = INT_MAX;
+	return 0;
+}
+
+
+
+static int msm_pcm_add_lge_fade_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_usr *fade_info;
+	struct snd_kcontrol *kctl;
+	const char *playback_mixer_ctl_name	= "Audio Stream";
+	const char *deviceNo		= "NN";
+	const char *suffix		= "Fade Control";
+	int ctl_len, ret = 0;
+
+	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
+		ctl_len = strlen(playback_mixer_ctl_name) + 1 +
+			strlen(deviceNo) + 1 + strlen(suffix) + 1;
+		pr_err("%s: Playback fade effect cntrl add\n", __func__);
+		ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+				NULL, 1, ctl_len, rtd->dai_link->id,
+				&fade_info);
+		if (ret < 0) {
+			pr_err("%s: playback app type cntrl add failed: %d\n",
+					__func__, ret);
+			return ret;
+		}
+		kctl = fade_info->kctl;
+		snprintf(kctl->id.name, ctl_len, "%s %d %s",
+				playback_mixer_ctl_name, rtd->pcm->device, suffix);
+		kctl->put = msm_pcm_playback_lge_fade_ctl_put;
+		kctl->get = msm_pcm_playback_lge_fade_ctl_get;
+		kctl->info = msm_pcm_playback_lge_fade_ctl_info;
+	}
+	return 0;
+}
+#endif //CONFIG_SND_LGE_MABL
+
 static int msm_pcm_add_controls(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret = 0;
@@ -2043,6 +2151,13 @@ static int msm_pcm_add_controls(struct snd_soc_pcm_runtime *rtd)
 	ret = msm_pcm_add_chmix_cfg_controls(rtd);
 	if (ret)
 		pr_err("%s: add chmix cfg controls failed:%d\n", __func__, ret);
+	#ifdef CONFIG_SND_LGE_MABL
+	ret = msm_pcm_add_lge_fade_controls(rtd);
+	if (ret) {
+		pr_err("%s: Could not add fade effect control %d\n",
+			__func__, ret);
+	}
+	#endif
 	return ret;
 }
 

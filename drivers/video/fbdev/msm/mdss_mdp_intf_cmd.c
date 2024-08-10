@@ -23,6 +23,11 @@
 #include "mdss_dsi_clk.h"
 #include <linux/interrupt.h>
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+#include "mdss_dsi.h"
+#include <linux/msm_lcd_recovery.h>
+#endif
+
 #define MAX_RECOVERY_TRIALS 10
 #define MAX_SESSIONS 2
 
@@ -2123,6 +2128,12 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	unsigned long flags;
 	int rc = 0, te_irq;
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+
+	ctrl = container_of(ctl->panel_data, struct mdss_dsi_ctrl_pdata, panel_data);
+#endif
+
 	ctx = (struct mdss_mdp_cmd_ctx *) ctl->intf_ctx[MASTER_CTX];
 	if (!ctx) {
 		pr_err("invalid ctx\n");
@@ -2182,7 +2193,11 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 
 		if (!rc) {
 			MDSS_XLOG(0xbac);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+			lge_mdss_report_panel_dead(PANEL_HW_RESET);
+#else
 			mdss_fb_report_panel_dead(ctl->mfd);
+#endif
 		} else if (ctx->pp_timeout_report_cnt == 0) {
 			MDSS_XLOG(0xbad);
 		} else if (ctx->pp_timeout_report_cnt == MAX_RECOVERY_TRIALS) {

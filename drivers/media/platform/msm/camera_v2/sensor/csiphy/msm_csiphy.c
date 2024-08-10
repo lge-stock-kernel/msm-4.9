@@ -68,6 +68,27 @@
 
 static struct v4l2_file_operations msm_csiphy_v4l2_subdev_fops;
 
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE, CST, added csiphy timer for enableing/disable irq */
+void csiphy_timer_callback(unsigned long data)
+{
+	struct csiphy_device *csiphy_dev =
+			(struct csiphy_device *) data;
+	if(atomic_read(&csiphy_dev->csiphy_timer.used)) {
+		pr_err("%s: timed out-csiphy(%p) sof_debug(%d)\n", __func__,
+				csiphy_dev, csiphy_dev->csiphy_sof_debug);
+#if 0 // LGE_CHANGE, disable debug irq because of kernel crash, dongjin.ha
+		if (csiphy_dev->csiphy_sof_debug == SOF_DEBUG_ENABLE) {
+			disable_irq(csiphy_dev->irq->start);
+			csiphy_dev->csiphy_sof_debug = SOF_DEBUG_DISABLE;
+		}
+#endif
+		atomic_set(&csiphy_dev->csiphy_timer.used, 0);
+		del_timer(&csiphy_dev->csiphy_timer.timer);
+	}
+}
+#endif
+
 static void msm_csiphy_write_settings(
 	struct csiphy_device *csiphy_dev,
 	struct csiphy_settings_t csiphy_settings)
@@ -2061,12 +2082,27 @@ static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
 	}
 
 	if (csiphy_dev->csiphy_3phase == CSI_3PHASE_HW) {
+#ifndef CONFIG_MACH_LGE
 		msm_camera_io_w(0x0,
 			csiphy_dev->base + csiphy_dev->ctrl_reg->csiphy_3ph_reg.
 			mipi_csiphy_3ph_cmn_ctrl5.addr);
 		msm_camera_io_w(0x0,
 			csiphy_dev->base + csiphy_dev->ctrl_reg->csiphy_3ph_reg.
 			mipi_csiphy_3ph_cmn_ctrl6.addr);
+#else
+/* LGE_CHANGE, CST, added gdsc regulator */
+		if (csiphy_dev->csiphy_reg_ptr[0] &&
+				regulator_is_enabled(csiphy_dev->csiphy_reg_ptr[0])) {
+			msm_camera_io_w(0x0,
+					csiphy_dev->base + csiphy_dev->ctrl_reg->csiphy_3ph_reg.
+					mipi_csiphy_3ph_cmn_ctrl5.addr);
+			msm_camera_io_w(0x0,
+					csiphy_dev->base + csiphy_dev->ctrl_reg->csiphy_3ph_reg.
+					mipi_csiphy_3ph_cmn_ctrl6.addr);
+		}else{
+			pr_err("%s: csiphy reg is either null or down \n", __func__);
+		}		
+#endif
 		if (csiphy_dev->hw_dts_version >= CSIPHY_VERSION_V50)
 			msm_camera_io_w(0x0,
 				csiphy_dev->base +
@@ -2207,6 +2243,16 @@ static int32_t msm_csiphy_cmd(struct csiphy_device *csiphy_dev, void *arg)
 			rc = -EFAULT;
 			break;
 		}
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE, CST, added csiphy timer for enableing/disable irq */
+		if(atomic_read(&csiphy_dev->csiphy_timer.used)) {
+				pr_err("%s: csiphy(%p) sof_debug(%d)", __func__,csiphy_dev,
+						csiphy_dev->csiphy_sof_debug);
+				//csiphy_dev->csiphy_sof_debug = SOF_DEBUG_DISABLE;// LGE_CHANGE, To disable debug irq because of kernel crash, elin.lee
+				atomic_set(&csiphy_dev->csiphy_timer.used, 0);
+				del_timer(&csiphy_dev->csiphy_timer.timer);
+		}
+#endif
 		rc = msm_csiphy_release(csiphy_dev, &csi_lane_params);
 		break;
 	default:
@@ -2235,6 +2281,9 @@ static long msm_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 			unsigned int cmd, void *arg)
 {
 	int rc = -ENOIOCTLCMD;
+#ifdef CONFIG_MACH_LGE
+	int ret;
+#endif
 	struct csiphy_device *csiphy_dev = v4l2_get_subdevdata(sd);
 
 	if (!csiphy_dev) {
@@ -2265,6 +2314,18 @@ static long msm_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 			csiphy_dev->csiphy_sof_debug = SOF_DEBUG_ENABLE;
 			rc = msm_camera_enable_irq(csiphy_dev->irq, true);
 		}
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE, CST, added csiphy timer for enableing/disable irq */
+		if(!atomic_read(&csiphy_dev->csiphy_timer.used)) {
+			atomic_set(&csiphy_dev->csiphy_timer.used, 1);
+			pr_err("%s:Starting timer to fire in %d ms. (jiffies=%lu)\n",__func__,
+					CSIPHY_ENABLE_IRQ_TIMEOUT, jiffies);
+			ret = mod_timer(&csiphy_dev->csiphy_timer.timer,
+					jiffies + msecs_to_jiffies(CSIPHY_ENABLE_IRQ_TIMEOUT));
+			if (ret)
+					pr_err("%s: Timer has not expired yet\n", __func__);
+		}
+#endif
 		break;
 	case MSM_SD_UNNOTIFY_FREEZE:
 		if (!csiphy_dev || !csiphy_dev->ctrl_reg ||
@@ -2556,6 +2617,14 @@ static int csiphy_probe(struct platform_device *pdev)
 	new_csiphy_dev->msm_sd.sd.devnode->fops =
 		&msm_csiphy_v4l2_subdev_fops;
 	new_csiphy_dev->csiphy_state = CSIPHY_POWER_DOWN;
+
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE, CST, added csiphy timer for enableing/disable irq */
+	atomic_set(&new_csiphy_dev->csiphy_timer.used, 0);
+	setup_timer(&new_csiphy_dev->csiphy_timer.timer,
+			csiphy_timer_callback, (unsigned long)new_csiphy_dev);
+#endif
+
 	return 0;
 
 csiphy_no_irq_resource:

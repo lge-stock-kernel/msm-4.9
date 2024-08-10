@@ -93,6 +93,7 @@ ifeq ($(TARGET_KERNEL),$(current_dir))
     KERNEL_VM_OUT := $(TARGET_OUT_INTERMEDIATES)/kernel_vm/$(TARGET_KERNEL)
     KERNEL_VM_SYMLINK := $(TARGET_OUT_INTERMEDIATES)/KERNEL_VM_OBJ
     KERNEL_VM_USR := $(KERNEL_VM_SYMLINK)/usr
+    KERNEL_HEADERS_TIMESTAMP := $(KERNEL_SYMLINK)/usr/build-timestamp
 else
     # Legacy style, kernel source directly under kernel
     KERNEL_LEGACY_DIR := true
@@ -100,6 +101,7 @@ else
     TARGET_KERNEL_SOURCE := kernel
     KERNEL_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ
     KERNEL_VM_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_VM_OBJ
+    KERNEL_HEADERS_TIMESTAMP := $(KERNEL_OUT)/usr/build-timestamp
 endif
 
 KERNEL_CONFIG := $(KERNEL_OUT)/.config
@@ -211,8 +213,14 @@ $(KERNEL_CONFIG): $(KERNEL_OUT)
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_DEFCONFIG)
 	$(hide) if [ ! -z "$(KERNEL_CONFIG_OVERRIDE)" ]; then \
 			echo "Overriding kernel config with '$(KERNEL_CONFIG_OVERRIDE)'"; \
-			echo $(KERNEL_CONFIG_OVERRIDE) >> $(KERNEL_OUT)/.config; \
+			for override_config in $(KERNEL_CONFIG_OVERRIDE); \
+				do echo $$override_config >> $(KERNEL_OUT)/.config; done; \
 			$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) oldconfig; fi
+
+ifeq ($(PRODUCT_SUPPORT_EXFAT), y)
+sinclude ./device/lge/common/tuxera.mk
+endif
+
 
 ifeq ($(TARGET_KERNEL_APPEND_DTB), true)
 TARGET_PREBUILT_INT_KERNEL_IMAGE := $(KERNEL_OUT)/arch/$(KERNEL_ARCH)/boot/Image
@@ -222,6 +230,31 @@ $(TARGET_PREBUILT_INT_KERNEL_IMAGE): $(KERNEL_OUT) $(KERNEL_HEADERS_INSTALL)
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_CFLAGS) Image
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_CFLAGS) modules
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) INSTALL_MOD_PATH=$(BUILD_ROOT_LOC)../$(KERNEL_MODULES_INSTALL) INSTALL_MOD_STRIP=1 $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) modules_install
+ifeq ($(PRODUCT_SUPPORT_EXFAT), y)
+	# Make directory dlkm
+	@mkdir -p ./$(KERNEL_MODULES_OUT)
+	@cp -f ./kernel/msm-4.9/tuxera_update.sh .
+	@sh tuxera_update.sh --target target/lg.d/$(TUXERA_TARGET) --use-cache --latest --max-cache-entries 2 --source-dir ./kernel/msm-4.9 --output-dir ./$(KERNEL_OUT) $(SUPPORT_EXFAT_TUXERA)
+	@tar -xzf tuxera-exfat*.tgz
+	@mkdir -p $(TARGET_OUT_EXECUTABLES)
+	@cp ./tuxera-exfat*/exfat/kernel-module/texfat.ko ./$(KERNEL_MODULES_OUT)
+	@cp ./tuxera-exfat*/exfat/tools/* ./$(TARGET_OUT_EXECUTABLES)
+	@./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/texfat.ko
+ifeq ($(PRODUCT_SUPPORT_NTFS), y)
+	@cp tuxera-*/ntfs/kernel-module/tntfs.ko ./$(KERNEL_MODULES_OUT)
+	@cp tuxera-*/ntfs/tools/* ./$(TARGET_OUT_EXECUTABLES)
+	@./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/tntfs.ko
+endif
+	@rm -f kheaders*.tar.bz2
+	@rm -f tuxera-exfat*.tgz
+	@rm -rf tuxera-exfat*
+	@rm -f tuxera_update.sh
+endif
+ifeq ($(USE_LGE_VPN), true)
+	@mkdir -p ./$(KERNEL_MODULES_OUT)
+	@cp ./$(KERNEL_OUT)/net/netfilter/interceptor_v38/vpnclient.ko ./$(KERNEL_MODULES_OUT)
+	@./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/vpnclient.ko
+endif
 	$(mv-modules)
 	$(clean-module-folder)
 
@@ -236,9 +269,36 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_OUT) $(KERNEL_HEADERS_INSTALL)
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_CFLAGS)
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_CFLAGS) modules
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) INSTALL_MOD_PATH=$(BUILD_ROOT_LOC)../$(KERNEL_MODULES_INSTALL) INSTALL_MOD_STRIP=1 $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) modules_install
+ifeq ($(PRODUCT_SUPPORT_EXFAT), y)
+	# Make directory dlkm
+	@mkdir -p ./$(KERNEL_MODULES_OUT)
+	@cp -f ./kernel/msm-4.9/tuxera_update.sh .
+	@sh tuxera_update.sh --target target/lg.d/$(TUXERA_TARGET) --use-cache --latest --max-cache-entries 2 --source-dir ./kernel/msm-4.9 --output-dir ./$(KERNEL_OUT) $(SUPPORT_EXFAT_TUXERA)
+	@tar -xzf tuxera-exfat*.tgz
+	@mkdir -p $(TARGET_OUT_EXECUTABLES)
+	@cp ./tuxera-exfat*/exfat/kernel-module/texfat.ko ./$(KERNEL_MODULES_OUT)
+	@cp ./tuxera-exfat*/exfat/tools/* ./$(TARGET_OUT_EXECUTABLES)
+	@./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/texfat.ko
+ifeq ($(PRODUCT_SUPPORT_NTFS), y)
+	@cp tuxera-*/ntfs/kernel-module/tntfs.ko ./$(KERNEL_MODULES_OUT)
+	@cp tuxera-*/ntfs/tools/* ./$(TARGET_OUT_EXECUTABLES)
+	@./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/tntfs.ko
+endif
+	@rm -f kheaders*.tar.bz2
+	@rm -f tuxera-exfat*.tgz
+	@rm -rf tuxera-exfat*
+	@rm -f tuxera_update.sh
+endif
+ifeq ($(USE_LGE_VPN), true)
+        @mkdir -p ./$(KERNEL_MODULES_OUT)
+        @cp ./$(KERNEL_OUT)/net/netfilter/interceptor_v38/vpnclient.ko ./$(KERNEL_MODULES_OUT)
+        @./$(KERNEL_OUT)/scripts/sign-file sha1 ./$(KERNEL_OUT)/certs/signing_key.pem ./$(KERNEL_OUT)/certs/signing_key.x509 ./$(KERNEL_MODULES_OUT)/vpnclient.ko
+endif
 	$(mv-modules)
 	$(clean-module-folder)
 endif
+
+$(KERNEL_HEADERS_TIMESTAMP) : $(KERNEL_HEADERS_INSTALL)
 
 $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT)
 	$(hide) if [ ! -z "$(KERNEL_HEADER_DEFCONFIG)" ]; then \
@@ -255,8 +315,11 @@ $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT)
 			$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) $(KERNEL_DEFCONFIG); fi
 	$(hide) if [ ! -z "$(KERNEL_CONFIG_OVERRIDE)" ]; then \
 			echo "Overriding kernel config with '$(KERNEL_CONFIG_OVERRIDE)'"; \
-			echo $(KERNEL_CONFIG_OVERRIDE) >> $(KERNEL_OUT)/.config; \
+			for override_config in $(KERNEL_CONFIG_OVERRIDE); \
+				do echo $$override_config >> $(KERNEL_OUT)/.config; done; \
 			$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) oldconfig; fi
+	$(hide) touch $@/build-timestamp
+
 
 .PHONY: kerneltags
 kerneltags: $(KERNEL_OUT) $(KERNEL_CONFIG)
@@ -271,4 +334,9 @@ kernelconfig: $(KERNEL_OUT) $(KERNEL_CONFIG)
 	cp $(KERNEL_OUT)/defconfig $(TARGET_KERNEL_SOURCE)/arch/$(KERNEL_ARCH)/configs/$(KERNEL_DEFCONFIG)
 
 endif
+endif
+
+ifeq ($(LGE_USB_DIAG_LOCK_TRF), y)
+    KERNEL_CONFIG_OVERRIDE += \
+    CONFIG_LGE_USB_DIAG_LOCK_TRF=y
 endif

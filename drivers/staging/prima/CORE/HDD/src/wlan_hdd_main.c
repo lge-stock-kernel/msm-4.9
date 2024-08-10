@@ -250,6 +250,7 @@ static int hdd_ParseUserParams(tANI_U8 *pValue, tANI_U8 **ppArg);
 void wlan_hdd_restart_timer_cb(v_PVOID_t usrDataForCallback);
 void hdd_set_wlan_suspend_mode(bool suspend);
 void hdd_set_vowifi_mode(hdd_context_t *hdd_ctx, bool enable);
+void hdd_set_olpc_mode(tHalHandle hHal, bool low_power);
 
 v_U16_t hdd_select_queue(struct net_device *dev,
     struct sk_buff *skb
@@ -765,12 +766,14 @@ void hdd_checkandupdate_dfssetting( hdd_adapter_t *pAdapter, char *country_code)
        /*New country doesn't support DFS */
        sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter), 0);
     }
-    else
-    {
+    //LGE_PATCH CN 03965440
+    //else
+    //{
        /* New country Supports DFS as well resetting value back from .ini */
-       sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter),
-                            cfg_param->enableDFSChnlScan);
-    }
+    //   sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter),
+    //                        cfg_param->enableDFSChnlScan);
+    //}
+	//LGE_PATCH CN 03965440
 
 }
 
@@ -876,6 +879,21 @@ static int hdd_parse_setrmcactionperiod_command(tANI_U8 *pValue,
        "uActionPeriod: %d", *pActionPeriod);
 
     return 0;
+}
+
+/*
+ * hdd_set_olpc_mode() - Process the OLPCMODE command and invoke the SME api
+ *
+ * @hHal: context handler
+ * @low_power: Value to be sent as a part of the OLPCMODE command
+ *
+ * Return: void
+ */
+void hdd_set_olpc_mode(tHalHandle hHal, bool low_power)
+{
+    tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
+
+    sme_set_olpc_mode(pMac, low_power);
 }
 
 /**
@@ -4079,6 +4097,21 @@ static int hdd_driver_command(hdd_adapter_t *pAdapter,
            ptr = (tANI_U8*)command + 11;
            hdd_set_vowifi_mode(pHddCtx, *ptr - '0');
         }
+
+       else if (strncmp(command, "OLPCMODE", 8) == 0)
+       {
+           tANI_U8 *ptr;
+
+           ret = hdd_drv_cmd_validate(command, 8);
+           if (ret)
+               goto exit;
+
+           VOS_TRACE( VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+                      " Received Command to go to low power mode in %s", __func__);
+
+           ptr = (tANI_U8*)command + 9;
+           hdd_set_olpc_mode((tHalHandle)(pHddCtx->hHal), *ptr - '0');
+       }
 
        else if(strncmp(command, "SETSUSPENDMODE", 14) == 0)
        {
@@ -9392,9 +9425,16 @@ void hdd_deinit_adapter( hdd_context_t *pHddCtx, hdd_adapter_t *pAdapter, tANI_U
          hdd_cleanup_actionframe(pHddCtx, pAdapter);
 
          hdd_unregister_hostapd(pAdapter, rtnl_held);
+
+// LGE_CHANGE_S, 2017.21-27, neo-wifi@lge.com, WCN36xx series use only wlan0 interface.
+#if 0
          /* set con_mode to STA only when no SAP concurrency mode */
          if (!(hdd_get_concurrency_mode() & (VOS_SAP | VOS_P2P_GO)))
              hdd_set_conparam(0);
+#else
+         hdd_set_conparam(0);
+#endif
+// LGE_CHANGE_E, 2017.21-27, neo-wifi@lge.com, WCN36xx series use only wlan0 interface.
          break;
       }
 
@@ -14867,6 +14907,9 @@ static int fwpath_changed_handler(const char *kmessage,
 {
    int ret;
 
+   // LGE_CHANGE_S, 2017.12-27, neo-wifi@lge.com, Add debug log
+   printk("Start fwpath_changed_handler(), wlan_hdd_inited = %d ", wlan_hdd_inited);
+   // LGE_CHANGE_E, 2017.12-27, neo-wifi@lge.com, Add debug log
    ret = param_set_copystring(kmessage, kp);
    if (0 == ret)
       ret = kickstart_driver();
@@ -14891,6 +14934,9 @@ static int con_mode_handler(const char *kmessage,
 {
    int ret;
 
+   // LGE_CHANGE_S, 2017.12-27, neo-wifi@lge.com, Add debug log
+   printk("Start con_mode_handler(), wlan_hdd_inited = %d ", wlan_hdd_inited);
+   // LGE_CHANGE_E, 2017.12-27, neo-wifi@lge.com, Add debug log
    ret = param_set_int(kmessage, kp);
    if (0 == ret)
       ret = kickstart_driver();

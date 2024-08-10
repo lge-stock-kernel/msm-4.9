@@ -15,6 +15,12 @@ ifeq ($(KERNEL_BUILD), 1)
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
+	ifeq ($(CONFIG_MACH_LGE), y)
+		include $(AUDIO_ROOT)/config/$(TARGET_PRODUCT)_auto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/$(TARGET_PRODUCT)_autoconf.h
+$(info asoc/Kbuild LGE config)
+	else
 	ifeq ($(CONFIG_ARCH_SDM845), y)
 		include $(AUDIO_ROOT)/config/sdm845auto.conf
 		export
@@ -49,6 +55,8 @@ ifeq ($(KERNEL_BUILD), 0)
 		include $(AUDIO_ROOT)/config/sdm450auto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sdm450autoconf.h
+		endif
+$(info QCT config)
 	endif
 endif
 
@@ -211,6 +219,13 @@ KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codec
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/wcd934x/Module.symvers
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/sdm660_cdc/Module.symvers
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/msm_sdw/Module.symvers
+ifdef CONFIG_SND_SOC_TAS2562
+KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/tas2562/Module.symvers
+endif
+ifdef CONFIG_SND_SOC_CS35L41
+$(info CONFIG_SND_SOC_CS35L41 is true in asoc's kbuild)
+KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/cs35l41/Module.symvers
+endif
 endif
 ifeq ($(KERNEL_BUILD), 1)
 	obj-y += codecs/

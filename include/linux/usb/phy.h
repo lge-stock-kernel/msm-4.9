@@ -24,6 +24,9 @@
 #define PHY_LS_MODE		BIT(9)
 #define PHY_USB_DP_CONCURRENT_MODE	BIT(10)
 #define PHY_SOFT_CONNECT	BIT(11)
+#ifdef CONFIG_LGE_USB
+#define PHY_OTG_MODE	BIT(10)
+#endif
 
 enum usb_phy_interface {
 	USBPHY_INTERFACE_MODE_UNKNOWN,

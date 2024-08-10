@@ -1,0 +1,53 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/msm-clocks-8953.h>
+
+#include "../sdm450-mh3j_common/sdm450-mh3j_common.dtsi"
+#include "sdm450-mh3j-camera.dtsi"
+#include "sdm450-mh3j-pinctrl.dtsi"
+#include "sdm450-mh3j-panel.dtsi"
+#include "sdm450-mh3j-misc.dtsi"
+#include "sdm450-mh3j-pm.dtsi"
+#include "sdm450-mh3j-sound.dtsi"
+#include "sdm450-mh3j-connectivity.dtsi"
+#include "sdm450-mh3j-nfc.dtsi"
+#include "sdm450-mh3j-touch.dtsi"
+#include "sdm450-mh3j-fingerprint.dtsi"
+//#include "sdm450-mh3j-sensor.dtsi"
+#include "sdm450-mh3j-usb.dtsi"
+#include "sdm450-mh3j_dcm_jp-dtv.dtsi"
+
+&firmware {
+	android {
+		compatible = "android,firmware";
+		vbmeta {
+			compatible = "android,vbmeta";
+			parts = "vbmeta,boot,system,vendor,dtbo,recovery";
+		};
+		fstab {
+			compatible = "android,fstab";
+			vendor {
+				fsmgr_flags = "wait,avb";
+			};
+			product {
+				fsmgr_flags = "wait,avb";
+			};
+			OP {
+				fsmgr_flags = "wait,avb,nofail";
+				status = "disabled";
+			};
+		};
+	};
+};

@@ -1,0 +1,107 @@
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_mdp {
+	dsi_anx7625_1080p_video: qcom,mdss_dsi_anx7625_video {
+		qcom,mdss-dsi-panel-name = "ANX7625 1080P";
+		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
+		qcom,cont-splash-enabled;
+		qcom,mdss-dsi-panel-type = "dsi_video_mode";
+		qcom,mdss-dsi-panel-destination = "display_1";
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-panel-framerate = <60>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-panel-width = <1920>;
+		qcom,mdss-dsi-panel-height = <1080>;
+		qcom,mdss-dsi-h-front-porch = <176>;
+		qcom,mdss-dsi-h-back-porch = <148>;
+		qcom,mdss-dsi-h-pulse-width = <88>;
+		qcom,mdss-dsi-h-sync-skew = <0>;
+		qcom,mdss-dsi-v-front-porch = <10>;
+		qcom,mdss-dsi-v-back-porch = <48>;
+		qcom,mdss-dsi-v-pulse-width = <10>;
+
+		qcom,mdss-dsi-h-left-border = <0>;
+		qcom,mdss-dsi-h-right-border = <0>;
+		qcom,mdss-dsi-v-top-border = <0>;
+		qcom,mdss-dsi-v-bottom-border = <0>;
+
+		qcom,mdss-dsi-underflow-color = <0xff>;
+		qcom,mdss-dsi-border-color = <0>;
+
+		qcom,mdss-pan-physical-width-dimension = <309>;
+		qcom,mdss-pan-physical-height-dimension = <174>;
+
+		qcom,mdss-dsi-reset-sequence = <0 5>, <2 50>;
+		qcom,mdss-dsi-lp11-init;
+		qcom,mdss-dsi-h-sync-pulse = <1>;
+		qcom,mdss-dsi-traffic-mode = "non_burst_sync_pulse";
+		//qcom,mdss-dsi-lane-map = "lane_map_0123";
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		//qcom,mdss-dsi-tx-eot-append;
+		qcom,suspend-ulps-enabled;
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+
+		qcom,mdss-dsi-panel-timings-phy-v2 = [
+			25 20 08 0A 06 02 04 a0
+			25 20 08 0A 06 02 04 a0
+			25 20 08 0A 06 02 04 a0
+			25 20 08 0A 06 02 04 a0
+			25 1D 08 0A 06 02 04 a0
+			];
+		qcom,mdss-dsi-t-clk-post = <0x0E>;
+		qcom,mdss-dsi-t-clk-pre = <0x33>;
+
+		qcom,mdss-dsi-bl-min-level = <1>;
+		qcom,mdss-dsi-bl-max-level = <255>;
+
+		lge,blmap-size = <256>;
+		lge,blmap = <
+			0 27 27 27 27 27 27 27 27 27 /* 0 ~ 9 */
+			27 27 28 28 29 29 30 31 32 33 /* 10 ~ 19 */
+			34 35 36 37 38 39 40 41 42 43 /* 20 ~ 29 */
+			44 46 48 50 52 54 56 58 60 62 /* 30 ~ 39 */
+			64 66 68 70 72 74 76 78 80 81 /* 40 ~ 49 */
+			84 90 96 102 108 114 120 126 126 126 /* 50 ~ 59 */
+			126 126 126 131 136 141 146 151 156 161 /* 60 ~ 69 */
+			166 171 176 181 186 192 198 204 210 216 /* 70 ~ 79 */
+			222 228 234 240 246 253 260 267 274 281 /* 80 ~ 89 */
+			288 295 302 309 316 323 330 337 344 351 /* 90 ~ 99 */
+			358 365 372 380 388 396 404 412 420 429 /* 100 ~ 109 */
+			438 447 456 465 474 483 492 501 511 521 /* 110 ~ 119 */
+			531 541 552 563 574 585 596 607 618 629 /* 120 ~ 129 */
+			640 651 663 675 704 733 752 771 791 820 /* 130 ~ 139 */
+			849 868 887 907 917 927 931 936 941 948 /* 140 ~ 149 */
+			955 959 964 969 975 982 988 995 1013 1030 /* 150 ~ 159 */
+			1047 1064 1081 1098 1115 1132 1149 1166 1183 1200 /* 160 ~ 169 */
+			1218 1236 1254 1272 1290 1308 1326 1344 1362 1381 /* 170 ~ 179 */
+			1400 1419 1438 1457 1476 1495 1515 1535 1555 1575 /* 180 ~ 189 */
+			1595 1615 1635 1655 1675 1695 1715 1735 1755 1775 /* 190 ~ 199 */
+			1795 1815 1835 1856 1877 1898 1919 1940 1965 1990 /* 200 ~ 209 */
+			2015 2040 2065 2091 2117 2143 2169 2195 2221 2247 /* 210 ~ 219 */
+			2271 2295 2319 2343 2367 2392 2417 2442 2467 2492 /* 220 ~ 229 */
+			2517 2542 2567 2596 2625 2654 2683 2712 2741 2770 /* 230 ~ 239 */
+			2800 2830 2860 2890 2920 2952 2984 3016 3048 3080 /* 240 ~ 249 */
+			3112 3144 3177 3210 3243 3276 /* 250 ~ 255 */
+		>;
+
+		lge,cabc-status = <0>; // HW_REV_1_0
+	};
+};

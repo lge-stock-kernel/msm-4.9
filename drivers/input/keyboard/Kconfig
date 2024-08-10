@@ -735,3 +735,9 @@ config KEYBOARD_BCM
 	  module will be called bcm-keypad.
 
 endif
+
+config LGE_SUPPORT_HALLIC
+	default n
+	bool "LGE SUPPORT HALLIC"
+	help
+	The LGE HALL IC Support feature.

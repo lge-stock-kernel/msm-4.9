@@ -1,5 +1,7 @@
 ccflags-y += -I$(src)
 
+obj-$(CONFIG_LGE_DISPLAY_DDIC_TD4310) += lge/ddic_td4310.o
+
 obj-$(CONFIG_FB_MSM_MDSS_MHL3) += mhl3/
 obj-$(CONFIG_MSM_DBA) += msm_dba/
 
@@ -43,6 +45,54 @@ mdss-dsi-objs += msm_mdss_io_8974.o
 mdss-dsi-objs += mdss_dsi_phy.o
 mdss-dsi-objs += mdss_dsi_phy_12nm.o
 mdss-dsi-objs += mdss_dsi_clk.o
+
+ifeq ($(CONFIG_LGE_DISPLAY_DEBUG),y)
+mdss-dsi-objs += lge/lge_mdss_debug.o
+endif
+
+ifeq ($(CONFIG_LGE_DISPLAY_MFTS),y)
+mdss-dsi-objs += lge/mfts_mode.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_COMMON),y)
+mdss-dsi-objs += lge/lge_mdss_dsi.o
+mdss-dsi-objs += lge/lge_mdss_dsi_panel.o
+mdss-dsi-objs += lge/lge_mdss_sysfs.o
+endif
+obj-$(CONFIG_LGE_DISPLAY_COMMON) += lge/lge_mdss_fb.o
+ifeq ($(CONFIG_LGE_DISPLAY_CV7A),y)
+mdss-dsi-objs += lge/lge_cv7a_sdm450/lge_mdss_dsi_cv7a_sdm450.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_MH4),y)
+mdss-dsi-objs += lge/lge_mh4x_sdm450/lge_mdss_dsi_mh4.o
+mdss-dsi-objs += lge/lge_mh4x_sdm450/lge_mdss_dsi_mh4_ili9881h.o
+mdss-dsi-objs += lge/lge_mh4x_sdm450/lge_mdss_dsi_mh4_cpt_ft8006p.o
+mdss-dsi-objs += lge/lge_mh4x_sdm450/lge_mdss_dsi_mh4_boe_ft8006p.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_MH5LM),y)
+mdss-dsi-objs += lge/lge_mh5lm_msm8917/lge_mdss_dsi_mh5lm.o
+mdss-dsi-objs += lge/lge_mh5lm_msm8917/lge_mdss_dsi_mh5lm_ili9881c.o
+mdss-dsi-objs += lge/lge_mh5lm_msm8917/lge_mdss_dsi_mh5lm_jd9365z.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_MH3J),y)
+mdss-dsi-objs += lge/lge_mh3j/lge_mdss_dsi_mh3j.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_WIDEPD),y)
+mdss-dsi-objs += lge/lge_widepd_sdm450/lge_mdss_dsi_widepd.o
+mdss-dsi-objs += lge/lge_widepd_sdm450/lge_mdss_dsi_widepd_anx7625.o
+endif
+ifeq ($(CONFIG_LGE_DISPLAY_SMALLPD),y)
+mdss-dsi-objs += lge/lge_smallpd_sdm450/lge_mdss_dsi_smallpd.o
+mdss-dsi-objs += lge/lge_smallpd_sdm450/lge_mdss_dsi_smallpd_ili9881h.o
+mdss-dsi-objs += lge/lge_smallpd_sdm450/lge_mdss_dsi_smallpd_cpt_ft8006p.o
+mdss-dsi-objs += lge/lge_smallpd_sdm450/lge_mdss_dsi_smallpd_boe_ft8006p.o
+mdss-dsi-objs += lge/lge_smallpd_sdm450/lge_mdss_dsi_smallpd_boe_sw43103.o
+endif
+
+ifeq ($(CONFIG_PXLW_IRIS3),y)
+mdss-dsi-objs += mdss_dsi_iris3_ioctl.o mdss_dsi_iris3_lightup_ocp.o mdss_dsi_iris3_lightup.o mdss_dsi_iris3_lut.o
+mdss-dsi-objs += mdss_dsi_iris3_pq.o mdss_dsi_iris3_lp.o
+endif
+
 obj-$(CONFIG_FB_MSM_MDSS) += mdss-dsi.o
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_panel.o
 
@@ -76,4 +126,10 @@ obj-$(CONFIG_FB_MSM_QPIC) += mdss-qpic.o
 obj-$(CONFIG_FB_MSM_QPIC_ILI_QVGA_PANEL) += qpic_panel_ili_qvga.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_fb.o mdss_util.o
+ifeq ($(CONFIG_LGE_DISPLAY_BL_USE_BLMAP),y)
+obj-$(CONFIG_FB_MSM_MDSS) += lge/lge_blmap_tuning.o
+endif
 obj-$(CONFIG_COMPAT) += mdss_compat_utils.o
+
+obj-$(CONFIG_LGE_INTERVAL_MONITOR) += lge/lge_interval_monitor.o
+obj-$(CONFIG_LGE_FBCN) += lge/lge_fbcn.o

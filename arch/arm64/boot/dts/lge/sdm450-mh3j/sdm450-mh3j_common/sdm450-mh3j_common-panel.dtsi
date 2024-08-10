@@ -1,0 +1,72 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../../dsi-panel-cdot-td4310-video.dtsi"
+#include "../../dsi-panel-cdot-td4310-px8418-video.dtsi"
+#include "../../pxlw-iris3-cfg-cdot-td4310.dtsi"
+#include "../../dsi-panel-tovis-td4310-video.dtsi"
+#include "../../dsi-panel-tovis-td4310-px8418-video.dtsi"
+#include "../../pxlw-iris3-cfg-tovis-td4310.dtsi"
+#include "../../ext_dsv_dw8768_mh3j.dtsi"
+#include "../../ext_backlight_lm3697_mh3j.dtsi"
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dsi {
+	hw-config = "single_dsi";
+};
+
+&dsi_tovis_td4310_vid {
+	lge,panel-id = <0>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <2047>;
+};
+
+&dsi_tovis_td4310_px8418_vid {
+	lge,panel-id = <0>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <2047>;
+};
+
+&dsi_cdot_td4310_vid {
+	lge,panel-id = <1>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <2047>;
+};
+
+&dsi_cdot_td4310_px8418_vid {
+	lge,panel-id = <1>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_others";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <2047>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_tovis_td4310_vid>;
+	pinctrl-names = "mdss_default", "mdss_sleep";
+	pinctrl-0 = <&mdss_te_active>;
+	pinctrl-1 = <&mdss_te_suspend>;
+
+	qcom,platform-reset-gpio = <&tlmm 61 0>;
+
+	lge,extra-gpio-names = "vddio";
+	lge,gpio-vddio = <&tlmm 35 0>;
+
+	qcom,platform-iris-reset-gpio = <&tlmm 134 0>;
+	qcom,platform-analog-bypass-gpio = <&tlmm 97 0>;
+};

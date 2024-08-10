@@ -33,6 +33,10 @@
 #include <soc/qcom/watchdog.h>
 #include <linux/dma-mapping.h>
 
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+#include <soc/qcom/lge/lge_handle_panic.h>
+#endif
+
 #define MODULE_NAME "msm_watchdog"
 #define WDT0_ACCSCSSNBARK_INT 0
 #define TCSR_WDT_CFG	0x30
@@ -121,6 +125,21 @@ module_param(WDT_HZ, long, 0);
  * watchdog_v2.ipi_en=1 to disable this optimization.
  * Or, can be turned off, by enabling CONFIG_QCOM_WDOG_IPI_ENABLE.
  */
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+static void __iomem *msm_timer0_base;
+
+void __iomem *wdt_timer_get_timer0_base(void)
+{
+        return msm_timer0_base;
+}
+
+static void wdt_timer_set_timer0_base(void __iomem * iomem)
+{
+        msm_timer0_base = iomem;
+}
+#endif
+
 #ifdef CONFIG_QCOM_WDOG_IPI_ENABLE
 #define IPI_CORES_IN_LPM 1
 #else
@@ -370,6 +389,10 @@ static void pet_watchdog(struct msm_watchdog_data *wdog_dd)
 	if (slack_ns < wdog_dd->min_slack_ns)
 		wdog_dd->min_slack_ns = slack_ns;
 	wdog_dd->last_pet = time_ns;
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	pr_notice("%s\n", __func__);
+#endif
 }
 
 static void keep_alive_response(void *info)
@@ -498,6 +521,9 @@ void msm_trigger_wdog_bite(void)
 		return;
 	pr_info("Causing a watchdog bite!");
 	__raw_writel(1, wdog_data->base + WDT0_BITE_TIME);
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	__raw_writel(1, wdog_data->base + WDT0_EN);
+#endif
 	/* Mke sure bite time is written before we reset */
 	mb();
 	__raw_writel(1, wdog_data->base + WDT0_RST);
@@ -527,6 +553,11 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 			(unsigned long) wdog_dd->last_pet, nanosec_rem / 1000);
 	if (wdog_dd->do_ipi_ping)
 		dump_cpu_alive_mask(wdog_dd);
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	lge_set_restart_reason(LGE_RB_MAGIC | LGE_ERR_TZ | LGE_ERR_TZ_WDT_BARK);
+#endif
+
 	msm_trigger_wdog_bite();
 	panic("Failed to cause a watchdog bite! - Falling back to kernel panic!");
 	return IRQ_HANDLED;
@@ -887,6 +918,10 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 	md_entry.size = sizeof(*wdog_dd);
 	if (msm_minidump_add_region(&md_entry) < 0)
 		pr_info("Failed to add Watchdog data in Minidump\n");
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+	wdt_timer_set_timer0_base(wdog_dd->base);
+#endif
 
 	return 0;
 err:

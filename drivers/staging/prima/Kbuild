@@ -11,6 +11,44 @@ ifeq ($(KERNEL_BUILD),1)
 	# Need to explicitly define for Kernel-based builds
 	MODNAME := wlan
 	WLAN_ROOT := drivers/staging/prima
+# These are configurable via Kconfig for kernel-based builds
+# Need to explicitly configure for Android-based builds
+
+#Flag to enable BlueTooth AMP feature
+    CONFIG_PRIMA_WLAN_BTAMP := n
+
+#Flag to enable Legacy Fast Roaming(LFR)
+    CONFIG_PRIMA_WLAN_LFR := y
+
+#JB kernel has PMKSA patches, hence enabling this flag
+    CONFIG_PRIMA_WLAN_OKC := y
+
+# JB kernel has CPU enablement patches, so enable
+    CONFIG_PRIMA_WLAN_11AC_HIGH_TP := y
+
+#Flag to enable TDLS feature
+    CONFIG_QCOM_TDLS := y
+
+#Flag to enable Fast Transition (11r) feature
+    CONFIG_QCOM_VOWIFI_11R := y
+
+#Flag to enable Protected Managment Frames (11w) feature
+ifneq ($(CONFIG_PRONTO_WLAN),)
+    CONFIG_WLAN_FEATURE_11W := y
+    endif
+
+#Flag to enable new Linux Regulatory implementation
+    CONFIG_ENABLE_LINUX_REG := y
+
+#Flag to enable offload packets feature
+    CONFIG_WLAN_OFFLOAD_PACKETS := y
+
+#Flag to enable SAE
+    CONFIG_WLAN_FEATURE_SAE := y
+
+#Flag to enable OWE
+    CONFIG_WLAN_AKM_SUITE_OWE := y
+
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
@@ -22,12 +60,6 @@ ifeq ($(KERNEL_BUILD), 0)
 
 #Flag to enable Legacy Fast Roaming(LFR)
     CONFIG_PRIMA_WLAN_LFR := y
-
-#Flag to enable SAE
-    CONFIG_WLAN_FEATURE_SAE := y
-
-#Flag to enable OWE
-    CONFIG_WLAN_AKM_SUITE_OWE := y
 
 #Flag to enable Legacy Fast Roaming(LFR) Make Before Break
     CONFIG_PRIMA_WLAN_LFR_MBB := y
@@ -94,31 +126,6 @@ HAVE_CFG80211 := 0
 endif
 endif
 
-ifeq ($(KERNEL_BUILD), 0)
-ifeq ($(WLAN_PROPRIETARY),1)
-    WLAN_BLD_DIR := vendor/qcom/proprietary/wlan
-else
-ifneq ($(TARGET_SUPPORTS_WEARABLES),true)
-ifneq ($(ANDROID_BUILD_TOP),)
-    WLAN_BLD_DIR := $(ANDROID_BUILD_TOP)/vendor/qcom/opensource/wlan
-else
-    WLAN_BLD_DIR := vendor/qcom/opensource/wlan
-endif # ANDROID_BUILD_TOP
-else
-ifneq ($(ANDROID_BUILD_TOP),)
-    WLAN_BLD_DIR := $(ANDROID_BUILD_TOP)/device/qcom/sdm429w/opensource/wlan
-else
-    WLAN_BLD_DIR := $(BOARD_OPENSOURCE_DIR)/wlan
-endif # ANDROID_BUILD_TOP
-endif # TARGET_SUPPORTS_WEARABLES
-endif # WLAN_PROPRIETARY
-
-ifneq ($(ANDROID_BUILD_TOP),)
-WLAN_ROOT=$(WLAN_BLD_DIR)/prima
-else
-WLAN_ROOT=$(KERNEL_TO_BUILD_ROOT_OFFSET)$(WLAN_BLD_DIR)/prima
-endif # ANDROID_BUILD_TOP
-endif # KERNEL_BUILD
 
 ifeq ($(CONFIG_PRIMA_WLAN_BTAMP),y)
 ############ BAP ############
@@ -612,7 +619,6 @@ CDEFINES :=	-DANI_BUS_TYPE_PLATFORM=1 \
 		-DWLAN_FEATURE_HOLD_RX_WAKELOCK \
 		-DWLAN_SOFTAP_VSTA_FEATURE \
 		-DWLAN_FEATURE_ROAM_SCAN_OFFLOAD \
-		-DWLAN_FEATURE_GTK_OFFLOAD \
 		-DWLAN_WAKEUP_EVENTS \
 	        -DWLAN_KD_READY_NOTIFIER \
 		-DWLAN_FEATURE_RMC \
@@ -760,7 +766,7 @@ CDEFINES += -DEXISTS_MSM_SMSM
 endif
 
 # Fix build for GCC 4.7
-EXTRA_CFLAGS += $(call cc-option,-Wno-maybe-uninitialized) -Wno-unused-function -Wno-enum-conversion -Wno-array-bounds -Wno-pointer-bool-conversion -Wno-parentheses-equality -Wno-typedef-redefinition -Wno-empty-body -Wno-non-literal-null-conversion
+EXTRA_CFLAGS += -Wno-uninitialized -Wno-unused-function -Wno-enum-conversion -Wno-pointer-bool-conversion -Wno-typedef-redefinition -Wno-pointer-bool-conversion -Wno-empty-body -Wno-array-bounds -Wno-parentheses-equality -Wno-non-literal-null-conversion
 
 ifeq ($(CONFIG_WLAN_OFFLOAD_PACKETS),y)
 CDEFINES += -DWLAN_FEATURE_OFFLOAD_PACKETS
@@ -769,6 +775,9 @@ endif
 ifeq ($(CONFIG_MDNS_OFFLOAD_SUPPORT), y)
 CDEFINES += -DMDNS_OFFLOAD
 endif
+
+# support LGE feature
+CDEFINES += -DFEATURE_SUPPORT_LGE
 
 KBUILD_CPPFLAGS += $(CDEFINES)
 

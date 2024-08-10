@@ -4360,7 +4360,12 @@ static void hub_set_initial_usb2_lpm_policy(struct usb_device *udev)
 
 	if ((udev->bos->ext_cap->bmAttributes & cpu_to_le32(USB_BESL_SUPPORT)) ||
 			connect_type == USB_PORT_CONNECT_TYPE_HARD_WIRED) {
+#if defined(CONFIG_LGE_USB_TYPE_C) && \
+			(defined(CONFIG_MACH_SDM450_CV7AS) || defined(CONFIG_MACH_SDM450_MH3J))
+		udev->usb2_hw_lpm_allowed = 0;
+#else
 		udev->usb2_hw_lpm_allowed = 1;
+#endif
 		usb_enable_usb2_hardware_lpm(udev);
 	}
 }

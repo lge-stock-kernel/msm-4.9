@@ -2613,11 +2613,11 @@ limProcessActionFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo,tpPESession ps
               tpSirMacVendorSpecificFrameHdr pVendorSpecific = (tpSirMacVendorSpecificFrameHdr) pActionHdr;
               tANI_U8 Oui[] = { 0x00, 0x00, 0xf0 };
 
-		if(frameLen < sizeof(*pVendorSpecific)) {
-			limLog(pMac, LOGE,
-			       FL("frame len %d less than Vendor Specific Hdr len"), frameLen);
-			break;
-		  }
+              if(frameLen < sizeof(*pVendorSpecific)) {
+                  limLog(pMac, LOGE,
+                         FL("frame len %d less than Vendor Specific Hdr len"), frameLen);
+                  break;
+              }
 
               //Check if it is a vendor specific action frame.
               if ((eLIM_STA_ROLE == psessionEntry->limSystemRole) &&

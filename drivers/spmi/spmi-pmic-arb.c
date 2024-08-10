@@ -575,7 +575,11 @@ static void pmic_arb_chained_irq(struct irq_desc *desc)
 	int first = pa->min_apid >> 5;
 	int last = pa->max_apid >> 5;
 	u32 status, enable;
+#ifdef CONFIG_LGE_PM
+	int i, id, apid=0;
+#else
 	int i, id, apid;
+#endif
 	/* status based dispatch */
 	bool acc_valid = false;
 	u32 irq_status = 0;
@@ -595,12 +599,25 @@ static void pmic_arb_chained_irq(struct irq_desc *desc)
 			if (apid < pa->min_apid || apid > pa->max_apid) {
 				WARN_ONCE(true, "spurious spmi irq received for apid=%d\n",
 					apid);
+#ifdef CONFIG_LGE_PM
+				dev_err_ratelimited(&pa->spmic->dev,
+					"spurious spmi irq apid=%d\n", apid);
+				cleanup_irq(pa, apid, id);
+#endif
 				continue;
 			}
 			enable = readl_relaxed(pa->intr +
 					pa->ver_ops->acc_enable(apid));
+#ifdef CONFIG_LGE_PM
+			if (enable & SPMI_PIC_ACC_ENABLE_BIT){
+				periph_interrupt(pa, apid);
+			} else {
+				cleanup_irq(pa, apid, id);
+			}
+#else
 			if (enable & SPMI_PIC_ACC_ENABLE_BIT)
 				periph_interrupt(pa, apid);
+#endif
 		}
 	}
 

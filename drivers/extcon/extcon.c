@@ -367,6 +367,10 @@ static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 {
 	int i, count = 0;
 	struct extcon_dev *edev = dev_get_drvdata(dev);
+#ifdef CONFIG_MACH_LGE
+	if(!edev)
+		edev = container_of(dev,struct extcon_dev,dev);
+#endif
 
 	if (edev->max_supported == 0)
 		return sprintf(buf, "%u\n", edev->state);
@@ -385,6 +389,10 @@ static ssize_t name_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
 	struct extcon_dev *edev = dev_get_drvdata(dev);
+#ifdef CONFIG_MACH_LGE
+	if(!edev)
+		edev = container_of(dev,struct extcon_dev,dev);
+#endif
 
 	return sprintf(buf, "%s\n", edev->name);
 }
@@ -1104,7 +1112,11 @@ int extcon_dev_register(struct extcon_dev *edev)
 	edev->dev.class = extcon_class;
 	edev->dev.release = extcon_dev_release;
 
+#ifdef CONFIG_MACH_LGE
+	edev->name = edev->name ? edev->name : dev_name(edev->dev.parent);
+#else
 	edev->name = dev_name(edev->dev.parent);
+#endif
 	if (IS_ERR_OR_NULL(edev->name)) {
 		dev_err(&edev->dev,
 			"extcon device name is null\n");

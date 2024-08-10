@@ -20,6 +20,15 @@
 #include "sdm660-cdc-registers.h"
 #include "msm-digital-cdc.h"
 
+#ifdef CONFIG_MACH_LGE
+#include "linux/extcon.h"
+
+static const unsigned int extcon_sar_backoff[] = {
+	EXTCON_MECHANICAL,
+	EXTCON_NONE,
+};
+#endif
+
 #define MICBIAS_EXT_BYP_CAP 0x00
 #define MICBIAS_NO_EXT_BYP_CAP 0x01
 #define ANLG_CDC_CHILD_DEVICES_MAX 1
@@ -224,6 +233,9 @@ struct sdm660_cdc_priv {
 	int child_count;
 	struct msm_cap_mode cap_mode;
 	char pmic_analog[PMIC_ANOLOG_SIZE];
+#ifdef CONFIG_MACH_LGE
+	struct extcon_dev *sar;
+#endif	
 };
 
 struct sdm660_cdc_pdata {

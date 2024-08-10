@@ -1935,8 +1935,10 @@ limDetectChangeInApCapabilities(tpAniSirGlobal pMac,
              SIR_MAC_GET_ESS(psessionEntry->limCurrentBssCaps) ) ||
           ( SIR_MAC_GET_PRIVACY(apNewCaps.capabilityInfo) !=
             SIR_MAC_GET_PRIVACY(psessionEntry->limCurrentBssCaps) ) ||
+/* case#03739793 (CR2353787), added by cheolsook.lee@lge.com, 20181204
           ( SIR_MAC_GET_SHORT_PREAMBLE(apNewCaps.capabilityInfo) !=
             SIR_MAC_GET_SHORT_PREAMBLE(psessionEntry->limCurrentBssCaps) ) ||
+*/
           ( SIR_MAC_GET_QOS(apNewCaps.capabilityInfo) !=
             SIR_MAC_GET_QOS(psessionEntry->limCurrentBssCaps) ) ||
           ( newChannel !=  psessionEntry->currentOperChannel )  ||
@@ -2485,8 +2487,8 @@ bool lim_is_assoc_req_for_drop(tpAniSirGlobal pMac, uint8_t *rx_pkt_info)
     lock_status =  pe_AcquireGlobalLock(&pMac->lim);
     if (lock_status != eHAL_STATUS_SUCCESS)
     {
-	    limLog(pMac, LOGE, FL("pe_AcquireGlobalLock error"));
-	    return TRUE;
+        limLog(pMac, LOGE, FL("pe_AcquireGlobalLock error"));
+        return TRUE;
     }
 
     sta_ds = dphLookupHashEntry(pMac, pMacHdr->sa, &aid,
@@ -2504,22 +2506,22 @@ bool lim_is_assoc_req_for_drop(tpAniSirGlobal pMac, uint8_t *rx_pkt_info)
     }
 
     if (sta_ds->pmfSaQueryState == DPH_SA_QUERY_IN_PROGRESS) {
-       status = true;
-       goto end;
+        status = true;
+        goto end;
     }
 
     if (sta_ds->last_assoc_received_time &&
        ((vos_timer_get_system_time() -
          sta_ds->last_assoc_received_time) < 1000)) {
-	 status = true;
-	 goto end;
+        status = true;
+        goto end;
     }
 
     sta_ds->last_assoc_received_time = vos_timer_get_system_time();
     status = false;
 end:
-	pe_ReleaseGlobalLock(&pMac->lim);
-	return status;
+    pe_ReleaseGlobalLock(&pMac->lim);
+    return status;
 }
 #endif
 

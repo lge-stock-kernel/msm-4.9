@@ -426,6 +426,10 @@ static int32_t msm_flash_off(struct msm_flash_ctrl_t *flash_ctrl,
 		led_trigger_event(flash_ctrl->switch_trigger, 0);
 
 	CDBG("Exit\n");
+
+#ifdef CONFIG_MACH_LGE
+	pr_info("msm_flash_off done\n");
+#endif
 	return 0;
 }
 
@@ -662,7 +666,9 @@ static int32_t msm_flash_low(
 				pr_debug("LED current clamped to %d\n",
 					curr);
 			}
-			CDBG("low_flash_current[%d] = %d", i, curr);
+#ifdef CONFIG_MACH_LGE
+			pr_info("low_flash_current[%d] = %d\n", i, curr);
+#endif
 			led_trigger_event(flash_ctrl->torch_trigger[i],
 				curr);
 		}
@@ -699,7 +705,9 @@ static int32_t msm_flash_high(
 				pr_debug("LED flash_current[%d] clamped %d\n",
 					i, curr);
 			}
-			CDBG("high_flash_current[%d] = %d", i, curr);
+#ifdef CONFIG_MACH_LGE
+			pr_info("high_flash_current[%d] = %d\n", i, curr);
+#endif
 			led_trigger_event(flash_ctrl->flash_trigger[i],
 				curr);
 		}
@@ -745,6 +753,101 @@ static int32_t msm_flash_release(
 	}
 	flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 	return 0;
+}
+
+#define front_flash  9
+static int32_t msm_flash_low_gpio(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int32_t curr = 0, max_current = 0;
+	int i = 0, raise_num = 0;
+	pr_info("msm_flash_low_gpio\n");
+	CDBG("Enter\n");
+	gpio_request(front_flash,"cam_flash");
+
+	max_current = 200;
+	curr = flash_data->flash_current[1];
+	pr_info("curr = %d \n", curr);
+
+	if (curr >= 0 && curr < max_current) {
+		// the raise_number means number of rising edges, each raising edge decrese 12.5mA
+		raise_num = 16 - (curr * 10 / 125) -1;
+		pr_info("raise_num = %d \n", raise_num);
+
+		for (i = 0; i < raise_num; i++)
+		{
+			gpio_direction_output(front_flash, 1);
+			usleep_range(2,3);
+			gpio_direction_output(front_flash, 0);
+		}
+	} else {
+		curr = max_current;
+	}
+
+	gpio_direction_output(front_flash, 1);
+	gpio_free(front_flash);
+	pr_info("low_flash_current[1] = %d\n", curr); //LGE_UPDATE
+	CDBG("Exit\n");
+	return 0;
+}
+
+static int32_t msm_flash_high_gpio(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int32_t curr = 0, max_current = 0;
+	int i = 0, raise_num = 0;
+	pr_info("msm_flash_high_gpio\n");
+	CDBG("Enter\n");
+	gpio_request(front_flash,"cam_flash");
+
+	max_current = 200;
+	curr = flash_data->flash_current[1];
+	pr_info("curr = %d \n", curr);
+
+	if (curr >= 0 && curr < max_current) {
+		// the raise_number means number of rising edges, each raising edge decrese 12.5mA
+		raise_num = 16 - (curr * 10 / 125) -1;
+		pr_info("raise_num = %d \n", raise_num);
+
+		for (i = 0; i < raise_num; i++)
+		{
+			gpio_direction_output(front_flash, 1);
+			usleep_range(2,3);
+			gpio_direction_output(front_flash, 0);
+		}
+	} else {
+		curr = max_current;
+	}
+
+	gpio_direction_output(front_flash, 1);
+	gpio_free(front_flash);
+	pr_info("high_flash_current[1] = %d\n", curr); //LGE_UPDATE
+	CDBG("Exit\n");
+	return 0;
+}
+static int32_t msm_flash_off_gpio(struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	   CDBG("Enter\n");
+	   gpio_request(front_flash,"cam_flash");
+	   gpio_direction_output(front_flash, 0);
+	   gpio_free(front_flash);
+	   CDBG("Exit\n");
+	  return 0;
+}
+
+static int32_t msm_flash_release_gpio(
+	struct msm_flash_ctrl_t *flash_ctrl)
+{
+	   CDBG("Enter\n");
+	   gpio_request(front_flash,"cam_flash");
+	   gpio_direction_output(front_flash, 0);
+	   gpio_free(front_flash);
+	   CDBG("Exit\n");
+	   return 0;
+
 }
 
 static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
@@ -814,7 +917,8 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 
 	mutex_unlock(flash_ctrl->flash_mutex);
 
-	rc = msm_flash_prepare(flash_ctrl);
+	if (flash_ctrl->flash_driver_type != FLASH_DRIVER_GPIO)
+		rc = msm_flash_prepare(flash_ctrl);
 	if (rc < 0) {
 		pr_err("%s:%d Enable/Disable Regulator failed ret = %d",
 			__func__, __LINE__, rc);
@@ -1391,10 +1495,10 @@ static struct msm_flash_table msm_gpio_flash_table = {
 	.flash_driver_type = FLASH_DRIVER_GPIO,
 	.func_tbl = {
 		.camera_flash_init = msm_flash_gpio_init,
-		.camera_flash_release = msm_flash_release,
-		.camera_flash_off = msm_flash_off,
-		.camera_flash_low = msm_flash_low,
-		.camera_flash_high = msm_flash_high,
+		.camera_flash_release = msm_flash_release_gpio,
+		.camera_flash_off = msm_flash_off_gpio,
+		.camera_flash_low = msm_flash_low_gpio,
+		.camera_flash_high = msm_flash_high_gpio,
 		.camera_flash_query_current = NULL,
 	},
 };
