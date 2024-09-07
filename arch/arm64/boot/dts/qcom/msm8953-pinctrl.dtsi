@@ -837,7 +837,8 @@
 				/* suspended state */
 				mux {
 					pins = "gpio6", "gpio7";
-					function = "gpio";
+                                        /* LGE change setting */
+					function = "blsp_i2c2";
 				};
 
 				config {
@@ -906,6 +907,66 @@
 					bias-disable;
 				};
 			};
+		};
+
+		i2c_6 {
+			i2c_6_active: i2c_6_active {
+				/* active state */
+				mux {
+					pins = "gpio22", "gpio23";
+					function = "blsp_i2c6";
+				};
+
+				config {
+					pins = "gpio22", "gpio23";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
+			i2c_6_sleep: i2c_6_sleep {
+				/* suspended state */
+				mux {
+					pins = "gpio22", "gpio23";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio22", "gpio23";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+		};
+
+		i2c_8 {
+      		i2c_8_active: i2c_8_active {
+      			/* active state */
+      			mux {
+      				pins = "gpio98", "gpio99";
+      				function = "blsp_i2c8";
+      			};
+
+      			config {
+      				pins = "gpio98", "gpio99";
+      				drive-strength = <2>;
+      				bias-disable;
+      			};
+      		};
+
+      		i2c_8_sleep: i2c_8_sleep {
+      			/* suspended state */
+      			mux {
+      				pins = "gpio98", "gpio99";
+      				function = "gpio";
+      			};
+
+      			config {
+      				pins = "gpio98", "gpio99";
+      				drive-strength = <2>;
+      				bias-disable;
+      			};
+      		};
 		};
 
 		nfc {
@@ -1374,12 +1435,12 @@
 				/* active state */
 				mux {
 					/* MOSI, MISO, CLK */
-					pins = "gpio8", "gpio9", "gpio11";
+					pins = "gpio8", "gpio11";
 					function = "blsp_spi3";
 				};
 
 				config {
-					pins = "gpio8", "gpio9", "gpio11";
+					pins = "gpio8", "gpio11";
 					drive-strength = <12>; /* 12 MA */
 					bias-disable = <0>; /* No PULL */
 				};
@@ -1389,12 +1450,12 @@
 				/* suspended state */
 				mux {
 					/* MOSI, MISO, CLK */
-					pins = "gpio8", "gpio9", "gpio11";
+					pins = "gpio8", "gpio11";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio8", "gpio9", "gpio11";
+					pins = "gpio8", "gpio11";
 					drive-strength = <2>; /* 2 MA */
 					bias-pull-down; /* PULL Down */
 				};
@@ -1665,12 +1726,12 @@
 		tlmm_gpio_key {
 			gpio_key_active: gpio_key_active {
 				mux {
-					pins = "gpio85", "gpio86", "gpio87";
+					pins = "gpio85";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio85", "gpio86", "gpio87";
+					pins = "gpio85";
 					drive-strength = <2>;
 					bias-pull-up;
 				};
@@ -1678,12 +1739,12 @@
 
 			gpio_key_suspend: gpio_key_suspend {
 				mux {
-					pins = "gpio85", "gpio86", "gpio87";
+					pins = "gpio85";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio85", "gpio86", "gpio87";
+					pins = "gpio85";
 					drive-strength = <2>;
 					bias-pull-up;
 				};

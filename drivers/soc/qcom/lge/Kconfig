@@ -1,0 +1,131 @@
+config MACH_LGE
+	bool "Machine LGE"
+	help
+	  Support for machine LGE.
+
+menu "LGE Board Selection"
+
+config MACH_SDM450_CV7AS
+	bool "SDM450 CV7AS"
+	depends on ARCH_SDM450
+	select MACH_LGE
+	select LGE_DM_VERITY_RECOVERY
+	help
+	  Support for the Qualcomm SDM450 CV7AS device.
+
+config MACH_SDM450_MH4X
+	bool "SDM450 MH4X"
+	depends on ARCH_SDM450
+	select MACH_LGE
+	select LGE_DM_VERITY_RECOVERY
+	help
+	  Support for the Qualcomm SDM450 MH4X device.
+      
+config MACH_SDM450_MH3J
+	bool "SDM450 MH3J"
+	depends on ARCH_SDM450
+	select MACH_LGE
+	select LGE_DM_VERITY_RECOVERY
+	help
+	  Support for the Qualcomm SDM450 MH3J device.
+
+config MACH_MSM8917_MH5LM
+	bool "MSM8917 MH5LM"
+	depends on ARCH_MSM8917
+	help
+	  Support for the Qualcomm MSM8917 MH5LM device.
+
+config MACH_MSM8917_MH5LM_NONAB
+	bool "MSM8917 MH5LM NONAB"
+	depends on ARCH_MSM8917
+	help
+	  Support for the Qualcomm MSM8917 MH5LM device.
+
+endmenu
+
+menu "LGE Specific Patches"
+
+config LGE_HANDLE_PANIC
+       tristate "Support LGE Crash Handler"
+       default n
+       depends on MACH_LGE
+       help
+         LGE Crash Handler
+
+config LGE_BOOTLOADER_LOG
+	tristate "Support LGE bootloader log"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE bootloader log
+
+config LGE_BOOTLOADER_TIME_CHECKER
+	tristate "Supprt bootloader(LK, SBL) time"
+	default n
+	depends on MACH_LGE
+	help
+	  Check LK, SBL booting time at
+	  sys/module/lge_bootloader_time_checker/parameters/lk_time
+	  sys/module/lge_bootloader_time_checker/parameters/sbl_time
+
+config LGE_USE_DEFAULT_HARD_RESET
+	bool "On reboot, apply hard reset unless memory contents must be maintained"
+	default n
+	help
+	  Nobody can guarantee stablity upon continuous warm resets.
+
+config LGE_PM
+	tristate "Support LGE power-management"
+	default n
+	depends on MACH_LGE
+	help
+	  Global feature of LGE power-management
+
+config LGE_PM_DEBUG
+	tristate "Support LGE PM Debug Feature"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM Debug Feature
+
+config LGE_PM_SMPL_COUNTER
+	tristate "Support LGE SMPL COUNTER feature"
+	default n
+	depends on MACH_LGE
+	help
+	  Say y to enable smpl_cnt module, that count when
+	  booted by SMPL.
+
+config LGE_PM_WAKE_LOCK_FOR_CHG_LOGO
+	bool "Wakelocks for LGE Chargerlogo"
+	depends on LGE_PM
+	help
+	  It enables wakelocks for LGE Chargerlogo.
+
+config LGE_ONE_BINARY_SKU
+        tristate "Support LGE One binary sku carrier"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE One Binary sku carrier.
+
+config LGE_DM_VERITY_RECOVERY
+	tristate "Support dm verity corrupt recovery"
+	default n
+	depends on MACH_LGE
+	help
+	  Sometimes, dm-bufio has invalid data. If data is corrupted,
+	  try to recover data.
+
+endmenu
+
+menu "LGE QFPROM Values"
+
+config LGE_QFPROM_INTERFACE
+	bool "Support qfprom interface"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE QFPROM DRIVER.
+
+endmenu

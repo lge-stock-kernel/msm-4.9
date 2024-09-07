@@ -1824,7 +1824,11 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		if (mrq->data)
 			mrq->data->error = -EIO;
 		host->mrq = NULL;
+#ifdef CONFIG_MACH_LGE
+		pr_err("%s: skip sdhci_dumpregs(), because clock : %u, pwr : %u\n", mmc_hostname(host->mmc), host->clock, (unsigned int) host->pwr );
+#else
 		sdhci_dumpregs(host);
+#endif
 		mmc_request_done(host->mmc, mrq);
 		return;
 	}

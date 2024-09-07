@@ -24,8 +24,15 @@
 #include "diag_masks.h"
 #include "diag_ipc_logging.h"
 #include "diag_mux.h"
+#ifdef CONFIG_LGE_ONE_BINARY_SKU
+#include <soc/qcom/lge/board_lge.h>
+#endif
 
 #define FEATURE_SUPPORTED(x)	((feature_mask << (i * 8)) & (1 << x))
+
+#if defined(CONFIG_LGE_USB_DIAG_LOCK_SPR) || defined(CONFIG_LGE_USB_DIAG_LOCK_TRF) || defined(CONFIG_LGE_ONE_BINARY_SKU)
+extern int user_diag_enable;
+#endif
 
 /* tracks which peripheral is undergoing SSR */
 static uint16_t reg_dirty;
@@ -1000,6 +1007,9 @@ static void process_diagid(uint8_t *buf, uint32_t len,
 	}
 }
 
+#if defined(CONFIG_LGE_USB_DIAG_LOCK_SPR) || defined(CONFIG_LGE_USB_DIAG_LOCK_TRF) || defined(CONFIG_LGE_ONE_BINARY_SKU)
+extern int set_diag_enable(int);
+#endif
 void diag_cntl_process_read_data(struct diagfwd_info *p_info, void *buf,
 				 int len)
 {
@@ -1007,6 +1017,9 @@ void diag_cntl_process_read_data(struct diagfwd_info *p_info, void *buf,
 	uint32_t header_len = sizeof(struct diag_ctrl_pkt_header_t);
 	uint8_t *ptr = buf;
 	struct diag_ctrl_pkt_header_t *ctrl_pkt = NULL;
+#if defined(CONFIG_LGE_USB_DIAG_LOCK_SPR) || defined(CONFIG_LGE_USB_DIAG_LOCK_TRF) || defined(CONFIG_LGE_ONE_BINARY_SKU)
+	struct diag_ctrl_cmd_reg *reg = NULL;
+#endif
 
 	if (!buf || len <= 0 || !p_info) {
 		DIAG_LOG(DIAG_DEBUG_PERIPHERALS, "diag: Invalid parameters\n");
@@ -1061,6 +1074,24 @@ void diag_cntl_process_read_data(struct diagfwd_info *p_info, void *buf,
 			process_diagid(ptr, ctrl_pkt->len,
 						   p_info->peripheral);
 			break;
+#if defined(CONFIG_LGE_USB_DIAG_LOCK_SPR) || defined(CONFIG_LGE_USB_DIAG_LOCK_TRF)
+		case DIAG_CTRL_MSG_LGE_DIAG_ENABLE:
+			reg = (struct diag_ctrl_cmd_reg *)ptr;
+			user_diag_enable = reg->cmd_code;
+			pr_info("diag: In %s, diag_enable: %d\n", __func__, reg->cmd_code);
+			break;
+#elif defined(CONFIG_LGE_ONE_BINARY_SKU)
+		case DIAG_CTRL_MSG_LGE_DIAG_ENABLE:
+			if(lge_get_laop_operator() == OP_SPR_US) {			
+    			reg = (struct diag_ctrl_cmd_reg *)ptr;
+    			user_diag_enable = reg->cmd_code;
+    			//user_diag_enable = 1;
+    			pr_info("diag: In %s, diag_enable: %d\n", __func__, reg->cmd_code);
+    			break;
+
+			}
+
+#endif
 		default:
 			DIAG_LOG(DIAG_DEBUG_CONTROL,
 			"diag: Control packet %d not supported\n",

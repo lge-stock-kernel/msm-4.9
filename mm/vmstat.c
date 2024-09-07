@@ -937,6 +937,7 @@ const char * const vmstat_text[] = {
 #if IS_ENABLED(CONFIG_ZSMALLOC)
 	"nr_zspages",
 #endif
+
 #ifdef CONFIG_NUMA
 	"numa_hit",
 	"numa_miss",
@@ -946,6 +947,12 @@ const char * const vmstat_text[] = {
 	"numa_other",
 #endif
 	"nr_free_cma",
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	"nr_free_highorder",
+#endif
+#ifdef CONFIG_NON_SWAP
+	"nr_non_swap",
+#endif
 
 	/* Node-based counters */
 	"nr_inactive_anon",
@@ -955,9 +962,9 @@ const char * const vmstat_text[] = {
 	"nr_unevictable",
 	"nr_isolated_anon",
 	"nr_isolated_file",
-	"workingset_refault",
-	"workingset_activate",
-	"workingset_nodereclaim",
+	"refault_inactive_file",
+	"refault_active_file",
+	"refault_nodereclaim",
 	"nr_anon_pages",
 	"nr_mapped",
 	"nr_file_pages",

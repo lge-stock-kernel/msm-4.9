@@ -1,0 +1,30 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/msm-clocks-8953.h>
+
+#include "../sdm450-mh4x_common/sdm450-mh4x_common.dtsi"
+#include "sdm450-mh4x-camera.dtsi"
+#include "sdm450-mh4x-pinctrl.dtsi"
+#include "sdm450-mh4x-panel.dtsi"
+#include "sdm450-mh4x-misc.dtsi"
+#include "sdm450-mh4x-pm.dtsi"
+#include "sdm450-mh4x-sound.dtsi"
+#include "sdm450-mh4x-connectivity.dtsi"
+#include "sdm450-mh4x-nfc.dtsi"
+#include "sdm450-mh4x-tdmb.dtsi"
+#include "sdm450-mh4x-touch.dtsi"
+#include "sdm450-mh4x-fingerprint.dtsi"
+#include "sdm450-mh4x-sensor.dtsi"
+#include "sdm450-mh4x-usb.dtsi"

@@ -15,10 +15,20 @@
 #include <linux/cpufreq.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#ifdef CONFIG_LGE_PM
+bool minfreq_enabled = false;
+EXPORT_SYMBOL(minfreq_enabled);
+#endif
 
 static void cpufreq_gov_performance_limits(struct cpufreq_policy *policy)
 {
 	pr_debug("setting to %u kHz\n", policy->max);
+#ifdef CONFIG_LGE_PM
+	if (minfreq_enabled) {
+		pr_debug("setting to %u kHz\n", policy->min);
+		__cpufreq_driver_target(policy, policy->min, CPUFREQ_RELATION_H);
+	} else
+#endif
 	__cpufreq_driver_target(policy, policy->max, CPUFREQ_RELATION_H);
 }
 

@@ -48,6 +48,9 @@ static ssize_t power_supply_show_property(struct device *dev,
 		"USB_CDP", "USB_ACA", "USB_HVDCP", "USB_HVDCP_3", "USB_PD",
 		"Wireless", "USB_FLOAT", "BMS", "Parallel", "Main", "Wipower",
 		"TYPEC", "TYPEC_UFP", "TYPEC_DFP"
+#ifdef CONFIG_LGE_USB_TYPE_C
+		,"USB_C", "USB_PD"
+#endif
 	};
 	static char *status_text[] = {
 		"Unknown", "Charging", "Discharging", "Not charging", "Full"
@@ -107,6 +110,11 @@ static ssize_t power_supply_show_property(struct device *dev,
 	if (off == POWER_SUPPLY_PROP_STATUS)
 		return scnprintf(buf, PAGE_SIZE, "%s\n",
 				status_text[value.intval]);
+#ifdef CONFIG_LGE_PM
+	else if (off == POWER_SUPPLY_PROP_STATUS_RAW)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+				status_text[value.intval]);
+#endif
 	else if (off == POWER_SUPPLY_PROP_CHARGE_TYPE)
 		return scnprintf(buf, PAGE_SIZE, "%s\n",
 				charge_type[value.intval]);
@@ -177,6 +185,9 @@ static ssize_t power_supply_store_property(struct device *dev,
 static struct device_attribute power_supply_attrs[] = {
 	/* Properties of type `int' */
 	POWER_SUPPLY_ATTR(status),
+#ifdef CONFIG_LGE_PM
+	POWER_SUPPLY_ATTR(status_raw),
+#endif
 	POWER_SUPPLY_ATTR(charge_type),
 	POWER_SUPPLY_ATTR(health),
 	POWER_SUPPLY_ATTR(present),
@@ -286,10 +297,22 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(voltage_qnovo),
 	POWER_SUPPLY_ATTR(rerun_aicl),
 	POWER_SUPPLY_ATTR(cycle_count_id),
+#ifdef CONFIG_LGE_PM
+        POWER_SUPPLY_ATTR(battery_cycle),
+#endif
 	POWER_SUPPLY_ATTR(safety_timer_expired),
 	POWER_SUPPLY_ATTR(restricted_charging),
+#ifdef CONFIG_LGE_USB_TYPE_C
+	POWER_SUPPLY_ATTR(dp_alr_mode),
+#endif
 	POWER_SUPPLY_ATTR(current_capability),
 	POWER_SUPPLY_ATTR(typec_mode),
+#if defined(CONFIG_LGE_USB_FLOATED_CHARGER_DETECT) && defined(CONFIG_LGE_USB_TYPE_C)
+	POWER_SUPPLY_ATTR(ctype_charger),
+#endif
+#if defined(CONFIG_LGE_USB_ANX7688_OVP) || defined(CONFIG_LGE_USB_TUSB422)
+	POWER_SUPPLY_ATTR(ctype_rp),
+#endif
 	POWER_SUPPLY_ATTR(typec_cc_orientation),
 	POWER_SUPPLY_ATTR(typec_power_role),
 	POWER_SUPPLY_ATTR(pd_allowed),
@@ -333,6 +356,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(max_pulse_allowed),
 	POWER_SUPPLY_ATTR(ignore_false_negative_isense),
 	POWER_SUPPLY_ATTR(battery_info),
+#if defined(CONFIG_LGE_USB_TYPE_C) || defined(CONFIG_LGE_USB_FLOATED_CHARGER_DETECT)
+	POWER_SUPPLY_ATTR(apsd_rerun_need),
+#endif
 	POWER_SUPPLY_ATTR(battery_info_id),
 	POWER_SUPPLY_ATTR(enable_jeita_detection),
 	POWER_SUPPLY_ATTR(esr_actual),
@@ -477,6 +503,15 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 		if (ret)
 			goto out;
 	}
+
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+	{	extern bool veneer_uevent_duplicated(const char* sender, char* data, int length);
+		if (veneer_uevent_duplicated(psy->desc->name, env->buf, env->buflen-1)) {
+			pr_err("an UEVENT for %s is skipped\n", psy->desc->name);
+			ret = -ENOTSYNC;
+		}
+	}
+#endif
 
 out:
 	free_page((unsigned long)prop_buf);

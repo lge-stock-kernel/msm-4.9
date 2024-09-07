@@ -1,5 +1,6 @@
 /*
  * cfg80211 scan result handling
+ ngah.min@LGEARND16B10:~/lamp
  *
  * Copyright 2008 Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
@@ -70,7 +71,7 @@ module_param(bss_entries_limit, int, 0644);
 MODULE_PARM_DESC(bss_entries_limit,
                  "limit to number of scan BSS entries (per wiphy, default 1000)");
 
-#define IEEE80211_SCAN_RESULT_EXPIRE	(30 * HZ)
+#define IEEE80211_SCAN_RESULT_EXPIRE	(7 * HZ)//(30 * HZ) //LG_WIFI_S 30-> 7
 
 static void bss_free(struct cfg80211_internal_bss *bss)
 {

@@ -2,7 +2,7 @@
  * drivers/staging/android/ion/ion_system_heap.c
  *
  * Copyright (C) 2011 Google, Inc.
- * Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -34,6 +34,15 @@
 static gfp_t high_order_gfp_flags = (GFP_HIGHUSER | __GFP_NOWARN |
 				     __GFP_NORETRY) & ~__GFP_RECLAIM;
 static gfp_t low_order_gfp_flags  = (GFP_HIGHUSER | __GFP_NOWARN);
+#ifdef CONFIG_MIGRATE_HIGHORDER
+#ifdef CONFIG_LOW_TIER_DEVICE  /* To use normal zone for highorder in low tier device */
+static gfp_t m_highorder_gfp_flags = (GFP_USER | __GFP_NOWARN |
+				     __GFP_NORETRY | __GFP_HIGHORDER) & ~__GFP_RECLAIM;
+#else
+static gfp_t m_highorder_gfp_flags = (GFP_HIGHUSER | __GFP_NOWARN |
+				     __GFP_NORETRY | __GFP_HIGHORDER) & ~__GFP_RECLAIM;
+#endif
+#endif
 
 #ifndef CONFIG_ALLOC_BUFFERS_IN_4K_CHUNKS
 #if defined(CONFIG_IOMMU_IO_PGTABLE_ARMV7S)
@@ -46,6 +55,28 @@ static const unsigned int orders[] = {0};
 #endif
 
 static const int num_orders = ARRAY_SIZE(orders);
+
+#ifdef CONFIG_MIGRATE_HIGHORDER
+#if defined(CONFIG_IOMMU_IO_PGTABLE_ARMV7S)
+static const unsigned int highorders[] = {8, 4};
+#else
+static const unsigned int highorders[] = {9, 4};
+#endif
+
+#define NUM_HIGHORDERS ARRAY_SIZE(highorders)
+#define MIN_HIGHORDER_SZ 65536
+
+static int highorder_to_index(unsigned int order)
+{
+	int i;
+	for (i = 0; i < NUM_HIGHORDERS; i++)
+		if (order == highorders[i])
+			return i;
+	BUG();
+	return -1;
+}
+#endif
+
 static int order_to_index(unsigned int order)
 {
 	int i;
@@ -66,6 +97,11 @@ struct ion_system_heap {
 	struct ion_page_pool **uncached_pools;
 	struct ion_page_pool **cached_pools;
 	struct ion_page_pool **secure_pools[VMID_LAST];
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	// must check this order size of pool
+	struct ion_page_pool **highorder_uncached_pools;
+	struct ion_page_pool **highorder_cached_pools;
+#endif
 	/* Prevents unnecessary page splitting */
 	struct mutex split_page_mutex;
 };
@@ -158,6 +194,16 @@ static void free_buffer_page(struct ion_system_heap *heap,
 	if (!(buffer->flags & ION_FLAG_POOL_FORCE_ALLOC)) {
 		struct ion_page_pool *pool;
 
+#ifdef CONFIG_MIGRATE_HIGHORDER
+		if (order > 0) {
+			if (cached)
+				pool = heap->highorder_cached_pools[highorder_to_index(order)];
+			else
+				pool = heap->highorder_uncached_pools[highorder_to_index(order)];
+			goto free_buffer;
+		}
+#endif
+
 		if (vmid > 0)
 			pool = heap->secure_pools[vmid][order_to_index(order)];
 		else if (cached)
@@ -165,7 +211,14 @@ static void free_buffer_page(struct ion_system_heap *heap,
 		else
 			pool = heap->uncached_pools[order_to_index(order)];
 
+#ifdef CONFIG_MIGRATE_HIGHORDER
+free_buffer:
+		/* highorder pages do not shrink */
+		if (buffer->private_flags & ION_PRIV_FLAG_SHRINKER_FREE
+				&& order == 0)
+#else
 		if (buffer->private_flags & ION_PRIV_FLAG_SHRINKER_FREE)
+#endif
 			ion_page_pool_free_immediate(pool, page);
 		else
 			ion_page_pool_free(pool, page);
@@ -275,6 +328,9 @@ static struct page_info *alloc_from_pool_preferred(
 	struct page_info *info;
 	int i;
 
+	if (buffer->flags & ION_FLAG_POOL_FORCE_ALLOC)
+		goto force_alloc;
+
 	info = kmalloc(sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return NULL;
@@ -306,6 +362,7 @@ static struct page_info *alloc_from_pool_preferred(
 	}
 
 	kfree(info);
+force_alloc:
 	return alloc_largest_available(heap, buffer, size, max_order);
 }
 
@@ -337,6 +394,123 @@ static unsigned int process_info(struct page_info *info,
 	return i;
 }
 
+#ifdef CONFIG_MIGRATE_HIGHORDER
+static struct page *alloc_buffer_highorder_page(struct ion_system_heap *heap,
+				      struct ion_buffer *buffer,
+				      unsigned long order,
+				      bool *from_pool)
+{
+	bool cached = ion_buffer_cached(buffer);
+	struct page *page;
+	struct ion_page_pool *pool;
+	struct device *dev = heap->heap.priv;
+	int double_check = 0;
+
+retry:
+	if (!cached) {
+		pool = heap->highorder_uncached_pools[highorder_to_index(order)];
+	} else {
+		pool = heap->highorder_cached_pools[highorder_to_index(order)];
+	}
+
+	page = ion_page_pool_alloc(pool, from_pool);
+
+	if (!page) {
+		if (double_check == 0) {
+			cached = !cached;
+			double_check++;
+			goto retry;
+		}
+
+		return NULL;
+	}
+
+	if (!(*from_pool) || double_check)
+		ion_pages_sync_for_device(dev, page, PAGE_SIZE << order,
+					  DMA_BIDIRECTIONAL);
+
+	return page;
+}
+
+/*
+ * alloc_largest_highorder() can return NULL.
+ * It always allocate high order pages from MIGRATE_HIGHORDER
+ */
+struct page_info *alloc_largest_highorder(struct ion_system_heap *heap,
+						 struct ion_buffer *buffer,
+						 unsigned long size,
+						 unsigned int max_order)
+{
+	struct page *page;
+	struct page_info *info;
+	int i;
+	bool from_pool;
+
+	if (size < MIN_HIGHORDER_SZ)
+		return NULL;
+
+	info = kmalloc(sizeof(struct page_info), GFP_KERNEL);
+	if (!info)
+		return NULL;
+
+	for (i = 0; i < NUM_HIGHORDERS; i++) {
+		if (size < order_to_size(highorders[i]))
+			continue;
+		if (max_order < highorders[i])
+			continue;
+		from_pool = !(buffer->flags & ION_FLAG_POOL_FORCE_ALLOC);
+		page = alloc_buffer_highorder_page(heap, buffer, highorders[i], &from_pool);
+		if (!page)
+			continue;
+
+		info->page = page;
+		info->order = highorders[i];
+		info->from_pool = from_pool;
+		INIT_LIST_HEAD(&info->list);
+		return info;
+	}
+	kfree(info);
+
+	return NULL;
+}
+
+void ion_system_heap_destroy_highorder_pools(struct ion_page_pool **pools)
+{
+	int i;
+	for (i = 0; i < NUM_HIGHORDERS; i++)
+		if (pools[i]) {
+			ion_page_pool_destroy(pools[i]);
+			pools[i] = NULL;
+		}
+}
+
+/**
+ * ion_system_heap_create_highorder_pools - creates pools for all orders
+ *
+ * If this fails you don't need to destroy any pools. It's all or
+ * nothing. if it succeeds you'll eventually need to use
+ * ion_system_heap_destroy_pools to destroy the pools.
+ */
+int ion_system_heap_create_highorder_pools(struct device *dev,
+						struct ion_page_pool **pools)
+{
+	int i;
+	for (i = 0; i < NUM_HIGHORDERS; i++) {
+		struct ion_page_pool *pool;
+		gfp_t gfp_flags = m_highorder_gfp_flags;
+
+		pool = ion_page_pool_create(dev, gfp_flags, highorders[i]);
+		if (!pool)
+			goto err_create_pool;
+		pools[i] = pool;
+	}
+	return 0;
+err_create_pool:
+	ion_system_heap_destroy_highorder_pools(pools);
+	return 1;
+}
+#endif
+
 static int ion_system_heap_allocate(struct ion_heap *heap,
 				     struct ion_buffer *buffer,
 				     unsigned long size, unsigned long align,
@@ -361,6 +535,16 @@ static int ion_system_heap_allocate(struct ion_heap *heap,
 	unsigned int sz;
 	int vmid = get_secure_vmid(buffer->flags);
 	struct device *dev = heap->priv;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	unsigned int highorder_sz = 0;
+#endif
+
+	if (ion_heap_is_system_heap_type(buffer->heap->type) &&
+	    is_secure_vmid_valid(vmid)) {
+		pr_info("%s: System heap doesn't support secure allocations\n",
+			__func__);
+		return -EINVAL;
+	}
 
 	if (ion_heap_is_system_heap_type(buffer->heap->type) &&
 	    is_secure_vmid_valid(vmid)) {
@@ -385,14 +569,35 @@ static int ion_system_heap_allocate(struct ion_heap *heap,
 					sys_heap, buffer, size_remaining,
 					max_order);
 		else
+#ifndef CONFIG_MIGRATE_HIGHORDER
 			info = alloc_largest_available(
 					sys_heap, buffer, size_remaining,
 					max_order);
+#else
+		{
+			if (get_secure_vmid(flags) > 0) {
+				info = alloc_largest_available(sys_heap, buffer,
+						size_remaining, max_order);
+			} else {
+				info = alloc_largest_highorder(sys_heap, buffer,
+						size_remaining,	highorders[0]);
+
+				if (!info) {
+					info = alloc_largest_available(sys_heap, buffer,
+							size_remaining, max_order);
+				}
+			}
+		}
+#endif
 
 		if (!info)
 			goto err;
 
 		sz = (1 << info->order) * PAGE_SIZE;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+		if (info->order > 0)
+			highorder_sz += sz;
+#endif
 
 		if (info->from_pool) {
 			list_add_tail(&info->list, &pages_from_pool);
@@ -474,6 +679,9 @@ static int ion_system_heap_allocate(struct ion_heap *heap,
 	}
 
 	buffer->priv_virt = table;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	buffer->highorder_size = highorder_sz;
+#endif
 	if (nents_sync)
 		sg_free_table(&table_sync);
 	msm_ion_heap_free_pages_mem(&data);
@@ -674,8 +882,55 @@ static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 	unsigned long uncached_total = 0;
 	unsigned long cached_total = 0;
 	unsigned long secure_total = 0;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	unsigned long highorder_total = 0;
+#endif
 	struct ion_page_pool *pool;
 	int i, j;
+
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	for (i = 0; i < NUM_HIGHORDERS; i++) {
+		pool = sys_heap->highorder_uncached_pools[i];
+		if (use_seq) {
+			seq_printf(s,
+				"%d order %u highmem pages in highorder_uncached pool = %lu total\n",
+				pool->high_count, pool->order,
+				(1 << pool->order) * PAGE_SIZE *
+					pool->high_count);
+			seq_printf(s,
+				"%d order %u lowmem pages in highorder_uncached pool = %lu total\n",
+				pool->low_count, pool->order,
+				(1 << pool->order) * PAGE_SIZE *
+					pool->low_count);
+		}
+
+		highorder_total += (1 << pool->order) * PAGE_SIZE *
+			pool->high_count;
+		highorder_total += (1 << pool->order) * PAGE_SIZE *
+			pool->low_count;
+	}
+
+	for (i = 0; i < NUM_HIGHORDERS; i++) {
+		pool = sys_heap->highorder_cached_pools[i];
+		if (use_seq) {
+			seq_printf(s,
+				"%d order %u highmem pages in highorder_cached pool = %lu total\n",
+				pool->high_count, pool->order,
+				(1 << pool->order) * PAGE_SIZE *
+					pool->high_count);
+			seq_printf(s,
+				"%d order %u lowmem pages in highorder_cached pool = %lu total\n",
+				pool->low_count, pool->order,
+				(1 << pool->order) * PAGE_SIZE *
+					pool->low_count);
+		}
+
+		highorder_total += (1 << pool->order) * PAGE_SIZE *
+			pool->high_count;
+		highorder_total += (1 << pool->order) * PAGE_SIZE *
+			pool->low_count;
+	}
+#endif
 
 	for (i = 0; i < num_orders; i++) {
 		pool = sys_heap->uncached_pools[i];
@@ -745,6 +1000,7 @@ static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 		}
 	}
 
+#ifndef CONFIG_MIGRATE_HIGHORDER
 	if (use_seq) {
 		seq_puts(s, "--------------------------------------------\n");
 		seq_printf(s, "uncached pool = %lu cached pool = %lu secure pool = %lu\n",
@@ -760,6 +1016,25 @@ static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 			uncached_total + cached_total + secure_total);
 		pr_info("-------------------------------------------------\n");
 	}
+#else
+	if (use_seq) {
+		seq_puts(s, "--------------------------------------------\n");
+		seq_printf(s, "uncached pool = %lu cached pool = %lu secure pool = %lu" \
+					" highorder pool = %lu\n",
+				uncached_total, cached_total, secure_total, highorder_total);
+		seq_printf(s, "pool total (uncached + cached + secure + highorder) = %lu\n",
+				uncached_total + cached_total + secure_total + highorder_total);
+		seq_puts(s, "--------------------------------------------\n");
+	} else {
+		pr_info("-------------------------------------------------\n");
+		pr_info("uncached pool = %lu cached pool = %lu secure pool = %lu" \
+					" highorder pool = %lu\n",
+				uncached_total, cached_total, secure_total, highorder_total);
+		pr_info("pool total (uncached + cached + secure + highorder) = %lu\n",
+				uncached_total + cached_total + secure_total + highorder_total);
+		pr_info("-------------------------------------------------\n");
+	}
+#endif
 
 	return 0;
 }
@@ -843,9 +1118,35 @@ struct ion_heap *ion_system_heap_create(struct ion_platform_heap *data)
 
 	mutex_init(&heap->split_page_mutex);
 
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	heap->highorder_uncached_pools = kzalloc(sizeof(struct ion_page_pool *) * NUM_HIGHORDERS, GFP_KERNEL);
+	if (!heap->highorder_uncached_pools)
+		goto destroy_cached_pools;
+
+	heap->highorder_cached_pools = kzalloc(sizeof(struct ion_page_pool *) * NUM_HIGHORDERS, GFP_KERNEL);
+	if (!heap->highorder_cached_pools)
+		goto destroy_highorder_uncached_pools;
+
+	if (ion_system_heap_create_highorder_pools(dev, heap->highorder_uncached_pools))
+		goto err_highorder_uncached_pools;
+
+	if (ion_system_heap_create_highorder_pools(dev, heap->highorder_cached_pools))
+		goto err_highorder_cached_pools;
+#endif
+
 	heap->heap.debug_show = ion_system_heap_debug_show;
 	return &heap->heap;
 
+#ifdef CONFIG_MIGRATE_HIGHORDER
+err_highorder_cached_pools:
+	ion_system_heap_destroy_highorder_pools(heap->highorder_uncached_pools);
+err_highorder_uncached_pools:
+	kfree(heap->highorder_cached_pools);
+destroy_highorder_uncached_pools:
+	kfree(heap->highorder_uncached_pools);
+destroy_cached_pools:
+	ion_system_heap_destroy_pools(heap->cached_pools);
+#endif
 err_create_cached_pools:
 	ion_system_heap_destroy_pools(heap->uncached_pools);
 err_create_uncached_pools:

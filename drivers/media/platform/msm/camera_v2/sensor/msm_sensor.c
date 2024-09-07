@@ -145,6 +145,11 @@ int msm_sensor_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 	if (s_ctrl->is_secure)
 		msm_camera_tz_i2c_power_down(sensor_i2c_client);
 
+#ifdef CONFIG_MACH_LGE
+	pr_info("%s(%d) %s\n", __func__, __LINE__,
+		s_ctrl->sensordata->sensor_name);
+#endif
+
 	return msm_camera_power_down(power_info, sensor_device_type,
 		sensor_i2c_client);
 }
@@ -221,6 +226,10 @@ int msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 			break;
 		}
 	}
+
+#ifdef CONFIG_MACH_LGE
+	pr_info("%s(%d) %s\n", __func__, __LINE__, sensor_name);
+#endif
 
 	return rc;
 }
@@ -1530,8 +1539,11 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 	/* Initialize cci_client */
 	s_ctrl->sensor_i2c_client->cci_client = kzalloc(sizeof(
 		struct msm_camera_cci_client), GFP_KERNEL);
-	if (!s_ctrl->sensor_i2c_client->cci_client)
+	if (!s_ctrl->sensor_i2c_client->cci_client) {
+		pr_err("%s:%d failed: no memory cci_client %pK\n", __func__,
+			__LINE__, s_ctrl->sensor_i2c_client->cci_client);
 		return -ENOMEM;
+	}
 
 	if (s_ctrl->sensor_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		cci_client = s_ctrl->sensor_i2c_client->cci_client;

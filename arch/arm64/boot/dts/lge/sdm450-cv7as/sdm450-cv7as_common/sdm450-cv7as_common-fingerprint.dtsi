@@ -1,0 +1,98 @@
+/*
+ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&other_ext_mem {
+	reg = <0x0 0x85100000 0x0 0x1700000>;
+};
+
+&qcom_seecom {
+	reg = <0x85100000 0x1200000>;
+};
+
+&tlmm{
+	fpc_reset {
+		fpc_reset_reset: reset {
+			mux {
+				pins = "gpio47";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio47";
+				drive-strength = <2>;
+				bias-disable;
+				output-low;
+			};
+		};
+
+		fpc_reset_active: active {
+			mux {
+				pins = "gpio47";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio47";
+				bias-disable;
+				drive-strength = <2>;
+				output-high;
+			};
+		};
+	};
+
+	fpc_irq_active {
+		fpc_irq_active: active {
+			mux {
+				pins = "gpio48";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio48";
+				bias-pull-down;
+				drive-strength = <2>;
+			};
+		};
+	};
+};
+&soc{
+
+	fpc1511@1 {
+		status = "ok";
+		compatible = "fpc,fpc1511";
+		input-device-name = "fpc1511";
+		reg = <1>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <48>;
+
+		spi-max-frequency = <4800000>;
+
+		fpc,gpio_rst	= <&tlmm 47 0x00>;
+		fpc,gpio_irq	= <&tlmm 48 0x00>;
+		vdd_io-supply	= <&pm8953_l6>;
+
+		fpc,enable-on-boot;
+		fpc,enable-wakeup;
+
+		spi-qup-id = <7>;
+
+		pinctrl-names = "fpc1511_reset_reset",
+				"fpc1511_reset_active",
+				"fpc1511_irq_active";
+
+		pinctrl-0 = <&fpc_reset_reset>;
+		pinctrl-1 = <&fpc_reset_active>;
+		pinctrl-2 = <&fpc_irq_active>;
+	};
+};

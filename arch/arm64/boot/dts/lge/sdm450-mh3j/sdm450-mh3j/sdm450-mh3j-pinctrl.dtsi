@@ -1,0 +1,227 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../sdm450-mh3j_common/sdm450-mh3j_common-pinctrl.dtsi"
+
+
+&soc {
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+		label = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_key_active>;
+
+		hot1_key {
+			label = "hot1_key";
+			gpios = <&tlmm 88 0x1>;
+			linux,input-type = <1>;
+			linux,code = <377>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			gpio-key,wakeup;
+		};
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&tlmm 85 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			gpio-key,wakeup;
+		};
+
+		smartcover {
+			label = "smartcover";
+			gpios = <&tlmm 44 0x1>;
+			linux,input-type = <5>;
+			linux,code = <222>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+	};
+};
+
+&tlmm {
+	tlmm_gpio_key {
+		gpio_key_active: gpio_key_active {
+			mux {
+				pins = "gpio85", "gpio88";
+			};
+
+			config {
+				pins = "gpio85", "gpio88";
+			};
+		};
+		gpio_key_suspend: gpio_key_suspend {
+			mux {
+				pins = "gpio85", "gpio88";
+			};
+
+			config {
+				pins = "gpio85", "gpio88";
+			};
+		};
+	};
+	/* pin set for usb redriver(tusb542) */
+	tusb422 {
+
+	   	sbu_moistrue_detect_active: sbu_moistrue_detect_active {
+	   		mux {
+	   			pins = "gpio9";
+	   			function = "gpio";
+	   		};
+	   		config {
+	   			pins = "gpio9";
+	   			bias-disable; /* NO PULL */
+	   		};
+	   	};
+
+	   	sbu_moistrue_detect_sleep: sbu_moistrue_detect_sleep {
+	   		mux {
+	   			pins = "gpio9";
+	   			function = "gpio";
+	   		};
+	   		config {
+	   			pins = "gpio9";
+				output-low;		/* Output Low */
+	   		};
+	   	};
+	   	
+		alert_gpio_active: alert_gpio_active {
+			mux {
+				pins = "gpio86";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio86";
+				driver-strength = <2>;
+				bias-disable;
+			};
+		};
+
+		alert_gpio_sleep: alert_gpio_sleep {
+			mux {
+				pins = "gpio86";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio86";
+				driver-strength = <2>;
+				bias-pull-up;
+			};
+		};
+	};
+
+	spi_isdbt_active: spi_isdbt_active {
+		mux {
+			pins =  "gpio0", "gpio1", "gpio2", "gpio3";
+			function = "blsp_spi1";
+		};
+
+		config {
+			pins =  "gpio0", "gpio1", "gpio2", "gpio3";
+			drive-strength = <8>; /* 8MA */
+			bias-disable;
+		};
+	};
+
+	spi_isdbt_suspend: spi_isdbt_suspend {
+		mux {
+			pins =  "gpio0", "gpio1", "gpio2", "gpio3";
+			function = "gpio";
+		};
+
+		config {
+			pins =  "gpio0", "gpio1", "gpio2", "gpio3";
+			drive-strength = <2>; /* 8MA */
+			bias-pull-down;
+		};
+	};
+
+	isdbt_int_active: isdbt_int_active {
+		mux {
+			pins = "gpio13";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio13";
+			drive-strength = <2>;
+			input-enable;
+			bias-pull-up;
+		};
+	};
+	isdbt_int_suspend: isdbt_int_suspend {
+		mux {
+			pins = "gpio13";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio13";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+
+	isdbt_en_active: isdbt_en_active {
+		mux {
+			pins = "gpio114";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio114";
+			drive-strength = <4>;
+			output-low;
+			bias-disable;
+		};
+	};
+	isdbt_en_suspend: isdbt_en_suspend {
+		mux {
+			pins = "gpio114";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio114";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	isdbt_lna_active: isdbt_lna_active {
+		mux {
+			pins = "gpio50";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio50";
+			drive-strength = <2>;
+			output-low;
+			bias-disable;
+		};
+	};
+	isdbt_lna_suspend: isdbt_lna_suspend {
+		mux {
+			pins = "gpio50";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio50";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+};

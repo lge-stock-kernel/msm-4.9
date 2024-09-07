@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&other_ext_mem {
+	reg = <0x0 0x85100000 0x0 0x1700000>;
+};
+
+&qcom_seecom {
+	reg = <0x85100000 0x1200000>;
+};
+
+&soc {
+	cdfinger_fingerprint {
+		compatible = "cdfinger,fps998e";
+		interrupt-parent = <&tlmm>;
+		interrupts = <62 0x0>;
+		vdd-supply  = <&pm8937_l10>;
+		cdfinger,reset_gpio = <&tlmm 47 0>;
+		cdfinger,irq_gpio = <&tlmm 62 0>;
+		cdfinger,pwr_gpio = <&tlmm 127 0>;
+		cdfinger,id_gpio = <&tlmm 25 0>;
+		pinctrl-names = "cdfinger_id_pin";
+		pinctrl-0 = <&fingerprint_id_default>;
+	};
+};

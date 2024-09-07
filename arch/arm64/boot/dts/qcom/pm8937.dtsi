@@ -432,3 +432,12 @@
 		};
 	};
 };
+
+// LGE Workaround Fix
+// Because current kernel vesion doesn't support overlay delete,
+// there is no way to remove the "qcom.vadc-thermal-node".
+// As we doesn't use this channel for thermal node,
+// we'll delete this node in qcom/pm8937.dtsi.
+&pm8937_vadc {
+	/delete-node/ chan@11;
+};

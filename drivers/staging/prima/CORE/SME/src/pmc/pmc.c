@@ -2529,6 +2529,11 @@ eHalStatus pmcEnterBmpsCheck( tpAniSirGlobal pMac )
 
 tANI_BOOLEAN pmcShouldBmpsTimerRun( tpAniSirGlobal pMac )
 {
+    // prevent  beacon miss issues in BMPS with CMW5500 for WFC -for LG only (+)
+    int i =0;
+    tCsrBssid temp_bssid = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+    // prevent  beacon miss issues in BMPS with CMW5500 for WFC -for LG only (-)
+
     /* Check if BMPS is enabled and if Auto BMPS Feature is still enabled
      * or there is a pending Uapsd request or HDD requested BMPS or there
      * is a pending request for WoWL. In all these cases BMPS is required.
@@ -2548,6 +2553,21 @@ tANI_BOOLEAN pmcShouldBmpsTimerRun( tpAniSirGlobal pMac )
                FL("Host controlled ps enabled, so don't run the timer"));
         return eANI_BOOLEAN_FALSE;
     }
+
+    // prevent beacon miss issues in BMPS with CMW5500 for WFC -for LG only (+)
+    for( i = 0; i < CSR_ROAM_SESSION_MAX; i++ )
+    {
+        if( CSR_IS_SESSION_VALID( pMac, i ) )
+        {
+            if(vos_is_macaddr_equal(((v_MACADDR_t *)pMac->roam.roamSession[i].connectedProfile.bssid),
+                                     (v_MACADDR_t *)temp_bssid))
+            {
+                  pmcLog(pMac, LOGE, FL("BMPS is not required"));
+                  return eANI_BOOLEAN_FALSE;
+            }
+        }
+    }
+    // prevent beacon miss issues in BMPS with CMW5500 for WFC -for LG only (-)
 
     if ((vos_concurrent_open_sessions_running()) &&
         ((csrIsConcurrentInfraConnected( pMac ) ||

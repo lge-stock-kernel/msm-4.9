@@ -768,7 +768,25 @@ struct mdss_panel_info {
 
 	/* debugfs structure for the panel */
 	struct mdss_panel_debugfs_info *debugfs_info;
-
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_BL_USE_BLMAP)
+	int blmap_size;
+	int *blmap;
+#endif //CONFIG_LGE_DISPLAY_BL_USE_BLMAP
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+	int esd_bl_delay;
+#endif
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COLOR_MANAGER)
+	/* For DISPLAY_COLOR_MANAGER */
+	int screen_color_mode;
+	int cm_preset_step;
+	int cm_red_step;
+	int cm_green_step;
+	int cm_blue_step;
+	int sc_sat_step;
+	int sc_hue_step;
+	int sc_sha_step;
+	int gc_mode;
+#endif
 	/* persistence mode on/off */
 	bool persist_mode;
 

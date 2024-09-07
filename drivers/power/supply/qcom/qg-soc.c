@@ -133,10 +133,22 @@ static bool is_scaling_required(struct qpnp_qg *chip)
 		/* SOC has not changed */
 		return false;
 
-
+#ifdef CONFIG_LGE_PM
+	if (chip->catch_up_soc > chip->msoc){
+		if (!is_usb_present(chip)) {
+		/* USB is not present and SOC has increased */
+			return false;
+		} else if  (chip->charge_status == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+		/*  USB is present but Not charging status and SOC has increased */
+			pr_err("LGE, don't catch up soc (not charging status)\n");
+			return false;
+		}
+	}
+#else
 	if (chip->catch_up_soc > chip->msoc && !is_usb_present(chip))
 		/* USB is not present and SOC has increased */
 		return false;
+#endif
 
 	return true;
 }

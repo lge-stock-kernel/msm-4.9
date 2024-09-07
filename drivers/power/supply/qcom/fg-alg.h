@@ -114,6 +114,9 @@ struct ttf {
 
 int restore_cycle_count(struct cycle_counter *counter);
 void clear_cycle_count(struct cycle_counter *counter);
+#ifdef CONFIG_LGE_PM
+int set_cycle_count(struct cycle_counter *counter, int count);
+#endif
 void cycle_count_update(struct cycle_counter *counter, int batt_soc,
 		int charge_status, bool charge_done, bool input_present);
 int get_cycle_count(struct cycle_counter *counter, int *count);

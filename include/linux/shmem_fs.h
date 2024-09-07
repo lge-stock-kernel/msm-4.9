@@ -124,4 +124,8 @@ static inline bool shmem_huge_enabled(struct vm_area_struct *vma)
 }
 #endif
 
+#ifdef CONFIG_LATE_UNMAP
+extern void shmem_page_unmap(struct page *page);
+#endif
+
 #endif
