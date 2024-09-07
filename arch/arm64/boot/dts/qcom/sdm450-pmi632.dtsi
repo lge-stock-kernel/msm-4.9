@@ -32,7 +32,8 @@
 		 <&pmi632_charger>, <&pmi632_charger>;
 	vbus_dwc3-supply = <&smb5_vbus>;
 };
-
+/*	LGE Change Setting	*/
+/*
 /{
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
@@ -43,20 +44,13 @@
 
 &pmi632_vadc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&quiet_therm_default &smb_therm_default>;
+	pinctrl-0 = <&quiet_therm_default>;
 };
 
 &pmi632_gpios {
 	quiet_therm {
 		quiet_therm_default: quiet_therm_default {
 			pins = "gpio3";
-			bias-high-impedance;
-		};
-	};
-
-	smb_therm {
-		smb_therm_default: smb_therm_default {
-			pins = "gpio4";
 			bias-high-impedance;
 		};
 	};
@@ -69,7 +63,8 @@
 &pmi632_charger {
 	qcom,battery-data = <&mtp_batterydata>;
 };
-
+*/
+/*	LGE Change Setting	*/
 &pm8953_gpios {
 	bklt_en {
 		bklt_en_default: bklt_en_default {

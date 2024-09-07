@@ -30,6 +30,12 @@
 #include "mdss_smmu.h"
 #include "mdss_dsi_phy.h"
 
+#if defined(CONFIG_PXLW_IRIS3)
+#include "mdss_dsi_iris3.h"
+#endif
+
+#undef CONFIG_PXLW_IRIS3
+
 #define VSYNC_PERIOD 17
 #define DMA_TX_TIMEOUT 200
 #define DMA_TPG_FIFO_LEN 64
@@ -121,7 +127,11 @@ void mdss_dsi_ctrl_init(struct device *ctrl_dev,
 	mutex_init(&ctrl->cmd_mutex);
 	mutex_init(&ctrl->clk_lane_mutex);
 	mutex_init(&ctrl->cmdlist_mutex);
+#if defined(CONFIG_PXLW_IRIS3)
+	mdss_dsi_buf_alloc(ctrl_dev, &ctrl->tx_buf, DSI_DMA_TX_BUF_SIZE);
+#else
 	mdss_dsi_buf_alloc(ctrl_dev, &ctrl->tx_buf, SZ_4K);
+#endif
 	mdss_dsi_buf_alloc(ctrl_dev, &ctrl->rx_buf, SZ_4K);
 	mdss_dsi_buf_alloc(ctrl_dev, &ctrl->status_buf, SZ_4K);
 	ctrl->cmdlist_commit = mdss_dsi_cmdlist_commit;
@@ -484,7 +494,11 @@ next:
 	mdss_dsi_lp_cd_rx(ctrl_pdata);
 
 	/* set DMA FIFO read watermark to 15/16 full */
+#if defined(CONFIG_PXLW_IRIS3)
+	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x50, 0x33);
+#else
 	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x50, 0x30);
+#endif
 
 	wmb(); /* ensure all DSI host configuration write are finished */
 }
@@ -1146,7 +1160,11 @@ void mdss_dsi_op_mode_config(int mode,
 void mdss_dsi_cmd_bta_sw_trigger(struct mdss_panel_data *pdata)
 {
 	u32 status;
+#if defined(CONFIG_PXLW_IRIS3)
+	int timeout_us = 20000;
+#else
 	int timeout_us = 10000;
+#endif
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
 	if (pdata == NULL) {
@@ -1740,6 +1758,10 @@ static int mdss_dsi_cmd_dma_tpg_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	return ret;
 }
 
+#if defined(CONFIG_PXLW_IRIS3)
+static void __dsi_fifo_error_handler(struct mdss_dsi_ctrl_pdata *ctrl, bool recovery_needed);
+#endif
+
 static int mdss_dsi_cmds2buf_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_cmd_desc *cmds, int cnt, int use_dma_tpg)
 {
@@ -1765,13 +1787,39 @@ static int mdss_dsi_cmds2buf_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 		if (dchdr->last) {
 			tp->data = tp->start; /* begin of buf */
 
+#if defined(CONFIG_PXLW_IRIS3)
+			if (iris_is_valid_cfg())
+				wait = 0;
+			else
+				wait = mdss_dsi_wait4video_eng_busy(ctrl);
+#else
 			wait = mdss_dsi_wait4video_eng_busy(ctrl);
+#endif
 
 			mdss_dsi_enable_irq(ctrl, DSI_CMD_TERM);
 			if (use_dma_tpg)
 				len = mdss_dsi_cmd_dma_tpg_tx(ctrl, tp);
 			else
+#if defined(CONFIG_PXLW_IRIS3)
+			{
+				ctrl->interleave_op_contention = false;
 				len = mdss_dsi_cmd_dma_tx(ctrl, tp);
+				if (iris_is_valid_cfg()) {
+					if (ctrl->interleave_op_contention) {
+						pr_err("%s: INTERLEAVE_OP_CONTENTION, retry\n", __func__);
+						ctrl->interleave_op_contention = false;
+						len = mdss_dsi_cmd_dma_tx(ctrl, tp);
+					}
+					if (len == -ETIMEDOUT) {
+						pr_err("%s: DMA timeout, retry\n", __func__);
+						__dsi_fifo_error_handler(ctrl, false);
+						len = mdss_dsi_cmd_dma_tx(ctrl, tp);
+					}
+				}
+			}
+#else
+				len = mdss_dsi_cmd_dma_tx(ctrl, tp);
+#endif
 			if (IS_ERR_VALUE((unsigned long)len)) {
 				mdss_dsi_disable_irq(ctrl, DSI_CMD_TERM);
 				pr_err("%s: failed to call cmd_dma_tx for cmd = 0x%x\n",
@@ -1981,9 +2029,15 @@ do_send:
 		 * its already been configured
 		 * for the requested pkt_size
 		 */
+#if defined(CONFIG_PXLW_IRIS3)
+		if (iris_is_valid_cfg())
+			pkt_size_cmd.dchdr.ack = 1;
+		else if (pkt_size == ctrl->cur_max_pkt_size)
+			goto skip_max_pkt_size;
+#else
 		if (pkt_size == ctrl->cur_max_pkt_size)
 			goto skip_max_pkt_size;
-
+#endif
 		max_pktsize[0] = pkt_size;
 		mdss_dsi_buf_init(tp);
 		ret = mdss_dsi_cmd_dma_add(tp, &pkt_size_cmd);
@@ -2013,7 +2067,6 @@ do_send:
 		ctrl->cur_max_pkt_size = pkt_size;
 		pr_debug("%s: max_pkt_size=%d sent\n",
 					__func__, pkt_size);
-
 skip_max_pkt_size:
 		mdss_dsi_buf_init(tp);
 		ret = mdss_dsi_cmd_dma_add(tp, cmds);
@@ -3083,7 +3136,18 @@ bool mdss_dsi_ack_err_status(struct mdss_dsi_ctrl_pdata *ctrl)
 			 (status & 0x1008000))
 			return false;
 
+#if defined(CONFIG_PXLW_IRIS3)
+		if (iris_is_valid_cfg()) {
+			if (status & 0x01000000)  /* ERROR */
+				ctrl->bta_error = true;
+			if (status & ~0x10000000)  /* ACK */
+				pr_err("%s: status=%x\n", __func__, status);
+		} else {
+			pr_err("%s: status=%x\n", __func__, status);
+		}
+#else
 		pr_err("%s: status=%x\n", __func__, status);
+#endif
 		ret = true;
 	}
 
@@ -3189,6 +3253,9 @@ static bool mdss_dsi_status(struct mdss_dsi_ctrl_pdata *ctrl)
 		MIPI_OUTP(base + 0x0008, status);
 		pr_err("%s: status=%x\n", __func__, status);
 		ret = true;
+#if defined(CONFIG_PXLW_IRIS3)
+		ctrl->interleave_op_contention = true;
+#endif
 	}
 
 	return ret;

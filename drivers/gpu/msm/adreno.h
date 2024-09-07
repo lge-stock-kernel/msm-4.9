@@ -1,5 +1,4 @@
-/* Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
- *
+/* Copyright (c) 2008-2017,2020 The Linux Foundation. All rights reserved.
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
@@ -1165,6 +1164,8 @@ void adreno_cx_dbgc_regread(struct kgsl_device *adreno_device,
 		unsigned int offsetwords, unsigned int *value);
 void adreno_cx_dbgc_regwrite(struct kgsl_device *device,
 		unsigned int offsetwords, unsigned int value);
+
+u32 adreno_get_ucode_version(const u32 *data);
 
 #define ADRENO_TARGET(_name, _id) \
 static inline int adreno_is_##_name(struct adreno_device *adreno_dev) \

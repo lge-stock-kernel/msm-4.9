@@ -20,6 +20,10 @@
 #include <linux/ratelimit.h>
 #include <linux/mmc/host.h>
 
+#if defined(CONFIG_LGE_MMC_DYNAMIC_LOG)
+#include <linux/mmc/debug_log.h>
+#endif
+
 /*
  * Controller registers
  */

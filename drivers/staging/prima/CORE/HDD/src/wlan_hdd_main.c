@@ -759,12 +759,14 @@ void hdd_checkandupdate_dfssetting( hdd_adapter_t *pAdapter, char *country_code)
        /*New country doesn't support DFS */
        sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter), 0);
     }
-    else
-    {
+    //LGE_PATCH CN 03965440
+    //else
+    //{
        /* New country Supports DFS as well resetting value back from .ini */
-       sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter),
-                            cfg_param->enableDFSChnlScan);
-    }
+    //   sme_UpdateDfsSetting(WLAN_HDD_GET_HAL_CTX(pAdapter),
+    //                        cfg_param->enableDFSChnlScan);
+    //}
+	//LGE_PATCH CN 03965440
 
 }
 
@@ -9380,9 +9382,16 @@ void hdd_deinit_adapter( hdd_context_t *pHddCtx, hdd_adapter_t *pAdapter, tANI_U
          hdd_cleanup_actionframe(pHddCtx, pAdapter);
 
          hdd_unregister_hostapd(pAdapter, rtnl_held);
+
+// LGE_CHANGE_S, 2017.21-27, neo-wifi@lge.com, WCN36xx series use only wlan0 interface.
+#if 0
          /* set con_mode to STA only when no SAP concurrency mode */
          if (!(hdd_get_concurrency_mode() & (VOS_SAP | VOS_P2P_GO)))
              hdd_set_conparam(0);
+#else
+         hdd_set_conparam(0);
+#endif
+// LGE_CHANGE_E, 2017.21-27, neo-wifi@lge.com, WCN36xx series use only wlan0 interface.
          break;
       }
 
@@ -14774,6 +14783,9 @@ static int fwpath_changed_handler(const char *kmessage,
 {
    int ret;
 
+   // LGE_CHANGE_S, 2017.12-27, neo-wifi@lge.com, Add debug log
+   printk("Start fwpath_changed_handler(), wlan_hdd_inited = %d ", wlan_hdd_inited);
+   // LGE_CHANGE_E, 2017.12-27, neo-wifi@lge.com, Add debug log
    ret = param_set_copystring(kmessage, kp);
    if (0 == ret)
       ret = kickstart_driver();
@@ -14798,6 +14810,9 @@ static int con_mode_handler(const char *kmessage,
 {
    int ret;
 
+   // LGE_CHANGE_S, 2017.12-27, neo-wifi@lge.com, Add debug log
+   printk("Start con_mode_handler(), wlan_hdd_inited = %d ", wlan_hdd_inited);
+   // LGE_CHANGE_E, 2017.12-27, neo-wifi@lge.com, Add debug log
    ret = param_set_int(kmessage, kp);
    if (0 == ret)
       ret = kickstart_driver();

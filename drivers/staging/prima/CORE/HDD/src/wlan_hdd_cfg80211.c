@@ -9230,7 +9230,11 @@ int wlan_hdd_cfg80211_init(struct device *dev,
 #endif
     )
     {
+// LGE_CHANGE_S, 2017.21-27, neo-wifi@lge.com, Disable F/W Roaming
+#if 0
         wiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
+#endif
+// LGE_CHANGE_E, 2017.21-27, neo-wifi@lge.com, Disable F/W Roaming
     }
 #endif
 #ifdef FEATURE_WLAN_TDLS
@@ -12301,6 +12305,9 @@ int __wlan_hdd_cfg80211_change_iface( struct wiphy *wiphy,
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR( ndev );
     hdd_context_t *pHddCtx;
     tCsrRoamProfile *pRoamProfile = NULL;
+    //CR2349673
+    hdd_adapter_t  *pP2pAdapter = NULL;
+    //CR2349673
     eCsrRoamBssType LastBSSType;
     hdd_config_t *pConfig = NULL;
     eMib_dot11DesiredBssType connectedBssType;
@@ -12465,6 +12472,29 @@ int __wlan_hdd_cfg80211_change_iface( struct wiphy *wiphy,
                 {
                     wlan_hdd_cancel_existing_remain_on_channel(pAdapter);
                 }
+                //CR2349673
+               if (NL80211_IFTYPE_AP == type)
+                {
+                    /*
+                     * As Loading WLAN Driver one interface being created
+                     * for p2p device address. This will take one HW STA and
+                     * the max number of clients that can connect to softAP
+                     * will be reduced by one. so while changing the interface
+                     * type to NL80211_IFTYPE_AP (SoftAP) remove p2p0 interface
+                     * as it is not required in SoftAP mode.
+                     */
+
+                     // Get P2P Adapter
+                     pP2pAdapter = hdd_get_adapter(pHddCtx,
+                                                  WLAN_HDD_P2P_DEVICE);
+                     if (pP2pAdapter)
+                     {
+                         hdd_stop_adapter(pHddCtx, pP2pAdapter, VOS_TRUE);
+                         hdd_deinit_adapter(pHddCtx, pP2pAdapter, TRUE);
+                         hdd_close_adapter(pHddCtx, pP2pAdapter, VOS_TRUE);
+                     }
+                }
+                //CR2349673
                 //Disable IMPS & BMPS for SAP/GO
                 if(VOS_STATUS_E_FAILURE ==
                        hdd_disable_bmps_imps(pHddCtx, WLAN_HDD_P2P_GO))
@@ -12602,6 +12632,18 @@ int __wlan_hdd_cfg80211_change_iface( struct wiphy *wiphy,
            case NL80211_IFTYPE_P2P_CLIENT:
            case NL80211_IFTYPE_ADHOC:
 
+                //CR2349673
+                if (pAdapter->device_mode == WLAN_HDD_SOFTAP
+                        && !hdd_get_adapter(pHddCtx, WLAN_HDD_P2P_DEVICE)) {
+                    /*
+                     * The p2p interface was deleted while SoftAP mode was init,
+                     * create that interface now that the SoftAP is going down.
+                     */
+                    pP2pAdapter = hdd_open_adapter(pHddCtx, WLAN_HDD_P2P_DEVICE,
+                                       "p2p%d", wlan_hdd_get_intf_addr(pHddCtx),
+                                       VOS_TRUE);
+                }
+                //CR2349673
                 hdd_stop_adapter( pHddCtx, pAdapter, VOS_TRUE );
 #ifdef FEATURE_WLAN_TDLS
 
@@ -18675,6 +18717,14 @@ static int __wlan_hdd_cfg80211_get_station(struct wiphy *wiphy, struct net_devic
 #endif
 
     sinfo->rx_packets = pAdapter->hdd_stats.summary_stat.rx_frm_cnt;
+
+//LGE_CHANGE_S, 2019.01.23, protocol-wifi@lge.com, Add Statistic log for WiFi Calling
+    {
+        printk("[LGE_WLAN][Info] RSSI=%3d, MCS=%2d, TxFlag=%2d, Tx=%9d, TxRetry=%9d, TxFail=%9d, Rx=%9d\n",
+                sinfo->signal, sinfo->txrate.mcs, sinfo->txrate.flags, sinfo->tx_packets,
+                sinfo->tx_retries, sinfo->tx_failed, sinfo->rx_packets);
+    }
+//LGE_CHANGE_E, 2019.01.23, protocol-wifi@lge.com, Add Statistic log for WiFi Calling
 
     vos_mem_copy(&pHddStaCtx->conn_info.txrate,
                  &sinfo->txrate, sizeof(sinfo->txrate));

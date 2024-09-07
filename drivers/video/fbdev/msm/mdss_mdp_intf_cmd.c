@@ -23,6 +23,11 @@
 #include "mdss_dsi_clk.h"
 #include <linux/interrupt.h>
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+#include "mdss_dsi.h"
+#include <linux/msm_lcd_recovery.h>
+#endif
+
 #define MAX_RECOVERY_TRIALS 10
 #define MAX_SESSIONS 2
 
@@ -2080,6 +2085,12 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	unsigned long flags;
 	int rc = 0, te_irq;
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+
+	ctrl = container_of(ctl->panel_data, struct mdss_dsi_ctrl_pdata, panel_data);
+#endif
+
 	ctx = (struct mdss_mdp_cmd_ctx *) ctl->intf_ctx[MASTER_CTX];
 	if (!ctx) {
 		pr_err("invalid ctx\n");
@@ -2139,7 +2150,11 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 
 		if (!rc) {
 			MDSS_XLOG(0xbac);
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+			lge_mdss_report_panel_dead(PANEL_HW_RESET);
+#else
 			mdss_fb_report_panel_dead(ctl->mfd);
+#endif
 		} else if (ctx->pp_timeout_report_cnt == 0) {
 			MDSS_XLOG(0xbad);
 		} else if (ctx->pp_timeout_report_cnt == MAX_RECOVERY_TRIALS) {
@@ -3232,6 +3247,7 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 	struct mdss_mdp_cmd_ctx *ctx = ctl->intf_ctx[MASTER_CTX];
 	struct mdss_mdp_cmd_ctx *sctx = NULL;
 	struct mdss_mdp_ctl *sctl = mdss_mdp_get_split_ctl(ctl);
+	struct mdss_panel_data *pdata;
 	bool panel_off = false;
 	bool turn_off_clocks = false;
 	bool send_panel_events = false;
@@ -3241,6 +3257,8 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 		pr_err("invalid ctx\n");
 		return -ENODEV;
 	}
+
+	pdata = ctl->panel_data;
 
 	if (__mdss_mdp_cmd_is_panel_power_off(ctx)) {
 		pr_debug("%s: panel already off\n", __func__);
@@ -3278,11 +3296,11 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 		send_panel_events = true;
 		if (mdss_panel_is_power_on_ulp(panel_power_state)) {
 			turn_off_clocks = true;
-		} else if (atomic_read(&ctx->koff_cnt)) {
+		} else if (atomic_read(&ctx->koff_cnt) && !pdata->panel_info.panel_dead) {
 			/*
-			 * Transition from interactive to low power
-			 * Wait for kickoffs to finish
-			 */
+			* Transition from interactive to low power
+			* Wait for kickoffs to finish
+			*/
 			MDSS_XLOG(ctl->num, atomic_read(&ctx->koff_cnt));
 			mdss_mdp_cmd_wait4pingpong(ctl, NULL);
 			if (sctl)

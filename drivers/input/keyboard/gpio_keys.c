@@ -33,6 +33,22 @@
 #include <linux/of_irq.h>
 #include <linux/spinlock.h>
 
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+#include <soc/qcom/lge/lge_handle_panic.h>
+#endif
+#if defined (CONFIG_STYLUS)
+#include <linux/stylus.h>
+#include <linux/wakelock.h>
+
+struct stylus_dev stylus_pen_sdev = {
+	.name = "pen_state",
+};
+#endif
+
+#if defined(CONFIG_SWITCH)
+#include <linux/wakelock.h>
+#endif
+
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
 	struct input_dev *input;
@@ -48,6 +64,9 @@ struct gpio_button_data {
 	spinlock_t lock;
 	bool disabled;
 	bool key_pressed;
+	#if defined (CONFIG_STYLUS) | defined(CONFIG_SWITCH)
+	struct wake_lock gpio_irq_wakelock;
+	#endif
 };
 
 struct gpio_keys_drvdata {
@@ -56,6 +75,11 @@ struct gpio_keys_drvdata {
 	struct mutex disable_lock;
 	struct gpio_button_data data[0];
 };
+
+#if defined(CONFIG_SWITCH)
+#include <linux/switch_helper.h>
+DEFINE_SWITCH(smartcover);
+#endif
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -374,6 +398,29 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			input_event(input, type, button->code, button->value);
 	} else {
 		input_event(input, type, button->code, state);
+		pr_err("%s: code(%d) state(%d)\n", __func__, button->code, !!state);
+
+#if defined(CONFIG_LGE_HANDLE_PANIC)
+		lge_gen_key_panic(button->code, state);
+#endif
+#if defined (CONFIG_STYLUS)
+		if (!strncmp(bdata->button->desc, "stylus_pen", 10)) {
+			pr_info("[stylus] stylus_pen state = %d\n", state);
+			if (stylus_pen_sdev.state != state) {
+				stylus_set_state(&stylus_pen_sdev, state);
+				pr_info("[stylus] stylus_pen state changed to %d\n", state);
+
+				if(stylus_pen_sdev.state == 0) {
+					pr_info("[stylus] Set stylus_pen wakelock\n");
+					wake_lock_timeout(&bdata->gpio_irq_wakelock, msecs_to_jiffies(4000));
+				}
+			}
+		}
+#endif
+
+#if defined(CONFIG_SWITCH)
+		CHECK_SWITCH(smartcover, 3000);
+#endif
 	}
 	input_sync(input);
 }
@@ -511,7 +558,21 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 				bdata->software_debounce =
 						button->debounce_interval;
 		}
+#if defined (CONFIG_STYLUS)
+		if (!strncmp(desc, "stylus_pen", 10)) {
+			if (stylus_dev_register(&stylus_pen_sdev) < 0) {
+				pr_info("[stylus] stylus_pen stylus registration failed\n");
+				stylus_dev_unregister(&stylus_pen_sdev);
+			} else {
+				wake_lock_init(&bdata->gpio_irq_wakelock, WAKE_LOCK_SUSPEND, "styluspen_wakelock");
+				pr_info("[stylus] stylus_pen stylus registration succeeded\b");
+			}
+		}
+#endif
 
+#if defined(CONFIG_SWITCH)
+		SETUP_SWITCH(smartcover);
+#endif
 		if (button->irq) {
 			bdata->irq = button->irq;
 		} else {

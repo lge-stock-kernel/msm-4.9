@@ -237,6 +237,7 @@ struct _mmc_csd {
 #define EXT_CSD_WR_REL_PARAM		166	/* RO */
 #define EXT_CSD_RPMB_MULT		168	/* RO */
 #define EXT_CSD_FW_CONFIG		169	/* R/W */
+#define EXT_CSD_USER_WP			171	/* R/W */
 #define EXT_CSD_BOOT_WP			173	/* R/W */
 #define EXT_CSD_ERASE_GROUP_DEF		175	/* R/W */
 #define EXT_CSD_PART_CONFIG		179	/* R/W */
@@ -382,6 +383,12 @@ struct _mmc_csd {
 
 #define EXT_CSD_PACKED_GENERIC_ERROR	BIT(0)
 #define EXT_CSD_PACKED_INDEXED_ERROR	BIT(1)
+
+/* user area write protection */
+#define EXT_CSD_US_PERM_WP_DIS		BIT(4)
+#define EXT_CSD_US_PWR_WP_DIS		BIT(3)
+#define EXT_CSD_US_PERM_WP_EN		BIT(2)
+#define EXT_CSD_US_PWR_WP_EN		BIT(0)
 
 /*
  * BKOPS status level

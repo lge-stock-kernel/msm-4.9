@@ -925,6 +925,17 @@ eHalStatus csrScanRequest(tpAniSirGlobal pMac, tANI_U16 sessionId,
                             pMac->roam.configParam.max_chan_for_dwell_time_cfg);
                 }
                 status = csrScanCopyRequest(pMac, &pScanCmd->u.scanCmd.u.scanRequest, pScanRequest);
+
+// LGE_CHANGE_S, 2017.12.27, neo-wifi@lge.com, Add debug log about scan
+                {
+                   tCsrScanRequest *pTempScanReq = &pScanCmd->u.scanCmd.u.scanRequest;
+                   pMac->scan.scanProfile.numOfChannels = pTempScanReq->ChannelInfo.numOfChannels;
+                   printk("[LGE_WLAN][Scan] scanId=%d Scan reason=%u numChan=%d P2P search=%d minCT=%d maxCT=%d minCBtc=%d maxCBtx=%d, result=%d \n",
+                        pScanCmd->u.scanCmd.scanID, pScanCmd->u.scanCmd.reason, pTempScanReq->ChannelInfo.numOfChannels, pTempScanReq->p2pSearch, 
+                        pTempScanReq->minChnTime, pTempScanReq->maxChnTime, pTempScanReq->min_chntime_btc_esco, pTempScanReq->max_chntime_btc_esco, status);
+                }
+// LGE_CHANGE_E, 2017.12.27, neo-wifi@lge.com, Add debug log about scan
+
                 if(HAL_STATUS_SUCCESS(status))
                 {
                     tCsrScanRequest *pTempScanReq =
@@ -6940,7 +6951,12 @@ eHalStatus csrScanCopyRequest(tpAniSirGlobal pMac, tCsrScanRequest *pDstReq, tCs
     tANI_U8  ch144_support = 0;
 
     ch144_support = WDA_getFwWlanFeatCaps(WLAN_CH144);
-
+    //LGE_PATCH CN 03965440
+    if(pMac->scan.fEnableDFSChnlScan)
+    {
+        pMac->roam.configParam.initialScanSkipDFSCh = 0;
+    }
+    //LGE_PATCH CN 03965440
     do
     {
         status = csrScanFreeRequest(pMac, pDstReq);

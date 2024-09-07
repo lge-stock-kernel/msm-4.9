@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8917-mh5lm_common/msm8917-mh5lm_common-sound.dtsi"
+
+&i2c_2 {
+        tas2562@4c {
+            status = "ok";
+            compatible = "ti,tas2562";
+            reg = <0x4c>;
+            ti,reset-gpio = <&tlmm 89 0>;
+            ti,irq-gpio = <&tlmm 12 0>;
+            ti,asi-format = <0>; /* 0, i2S; 1, DSP;  */
+            ti,left-slot = <0>; /* <left slot number> */
+            ti,right-slot = <1>; /* <right slot number> */
+            ti,imon-slot-no = <0>; /* <current sense slot number> */
+            ti,vmon-slot-no = <2>; /* <current voltage slot number> */
+        };
+};

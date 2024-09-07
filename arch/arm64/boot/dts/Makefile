@@ -1,3 +1,4 @@
+ifneq ($(CONFIG_MACH_LGE), y)
 dts-dirs += al
 dts-dirs += altera
 dts-dirs += amd
@@ -20,6 +21,10 @@ dts-dirs += sprd
 dts-dirs += xilinx
 dts-dirs += lg
 dts-dirs += zte
+else
+dts-dirs += lge
+dts-dirs += qcom
+endif
 
 subdir-y	:= $(dts-dirs)
 

@@ -1,5 +1,6 @@
 ifeq ($(CONFIG_OF),y)
 
+ifneq ($(CONFIG_MACH_LGE), y)
 dtb-$(CONFIG_ARCH_ALPINE) += \
 	alpine-db.dtb
 dtb-$(CONFIG_MACH_ARTPEC6) += \
@@ -955,6 +956,7 @@ dtb-$(CONFIG_ARCH_MEDIATEK) += \
 dtb-$(CONFIG_ARCH_ZX) += zx296702-ad1.dtb
 dtb-$(CONFIG_ARCH_ASPEED) += aspeed-bmc-opp-palmetto.dtb \
 	aspeed-ast2500-evb.dtb
+endif
 endif
 
 dtstree		:= $(srctree)/$(src)

@@ -18,20 +18,32 @@
 #include "msm_cci.h"
 #include "msm_eeprom.h"
 
+#ifdef CONFIG_MACH_LGE
+#include "msm_eeprom_util.h"
+#endif
+
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
 DEFINE_MSM_MUTEX(msm_eeprom_mutex);
 #ifdef CONFIG_COMPAT
 static struct v4l2_file_operations msm_eeprom_v4l2_subdev_fops;
+#if defined(CONFIG_MACH_LGE)
+static long msm_eeprom_subdev_fops_ioctl32(struct file *file, unsigned int cmd,
+	unsigned long arg);
+#endif
 #endif
 
-/*
- * msm_get_read_mem_size - Get the total size for allocation
- * @eeprom_map_array:	mem map
- *
- * Returns size after computation size, returns error in case of error
- */
+#if defined(CONFIG_MACH_LGE)
+static int msm_eeprom_get_dt_data(struct msm_eeprom_ctrl_t *e_ctrl);
+#endif
+
+/**
+  * msm_get_read_mem_size - Get the total size for allocation
+  * @eeprom_map_array:	mem map
+  *
+  * Returns size after computation size, returns error in case of error
+  */
 static int msm_get_read_mem_size
 	(struct msm_eeprom_memory_map_array *eeprom_map_array) {
 	int size = 0, i, j;
@@ -55,7 +67,8 @@ static int msm_get_read_mem_size
 		}
 		for (i = 0; i < eeprom_map->memory_map_size; i++) {
 			if (eeprom_map->mem_settings[i].i2c_operation ==
-				MSM_CAM_READ) {
+				MSM_CAM_READ || eeprom_map->mem_settings[i].i2c_operation ==
+				MSM_CAM_SINGLE_LOOP_READ ) {
 				size += eeprom_map->mem_settings[i].reg_data;
 			}
 		}
@@ -404,6 +417,27 @@ static int eeprom_parse_memory_map(struct msm_eeprom_ctrl_t *e_ctrl,
 					goto clean_up;
 				}
 				memptr += eeprom_map->mem_settings[i].reg_data;
+			}
+			break;
+			case MSM_CAM_SINGLE_LOOP_READ: {
+				 uint16_t m;
+				 uint16_t read_val = 0;
+			     e_ctrl->i2c_client.addr_type =
+			        eeprom_map->mem_settings[i].addr_type;
+			     for (m = 0; m < eeprom_map->mem_settings[i].reg_data;m++) {
+			         rc = e_ctrl->i2c_client.i2c_func_tbl->
+			         i2c_read(&(e_ctrl->i2c_client),
+			         eeprom_map->mem_settings[i].reg_addr,
+			         &read_val,
+			         eeprom_map->mem_settings[i].data_type);
+			         if (rc < 0) {
+			            pr_err("%s: read failed\n",__func__);
+			            goto clean_up;
+			         }
+			         *memptr = (uint8_t) read_val;
+			         memptr++;
+			     }
+			     msleep(eeprom_map->mem_settings[i].delay);
 			}
 			break;
 			default:
@@ -1023,6 +1057,17 @@ static int msm_eeprom_i2c_probe(struct i2c_client *client,
 	e_ctrl->msm_sd.sd.entity.function = MSM_CAMERA_SUBDEV_EEPROM;
 	msm_sd_register(&e_ctrl->msm_sd);
 	e_ctrl->is_supported = (e_ctrl->is_supported << 1) | 1;
+
+#ifdef CONFIG_MACH_LGE
+	CDBG("%s:%d compat_ioctl32 set \n", __func__, __LINE__);
+#ifdef CONFIG_COMPAT
+	msm_cam_copy_v4l2_subdev_fops(&msm_eeprom_v4l2_subdev_fops);
+	msm_eeprom_v4l2_subdev_fops.compat_ioctl32 =
+		msm_eeprom_subdev_fops_ioctl32;
+	e_ctrl->msm_sd.sd.devnode->fops = &msm_eeprom_v4l2_subdev_fops;
+#endif
+#endif
+
 	pr_err("%s success result=%d X\n", __func__, rc);
 	return rc;
 
@@ -1577,6 +1622,22 @@ static int eeprom_init_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 		pr_err("%s:%d Power down failed rc %d\n",
 			__func__, __LINE__, rc);
 
+#ifdef CONFIG_MACH_LGE
+	if (e_ctrl->subdev_id == 0 &&
+		e_ctrl->cal_data.num_data > EEPROM_OFFSET_MODULE_MAKER) {
+		msm_eeprom_set_maker_id(
+			e_ctrl->cal_data.mapdata[EEPROM_OFFSET_MODULE_MAKER]);
+	} else if (e_ctrl->subdev_id == 0 &&
+		e_ctrl->cal_data.num_data <= EEPROM_OFFSET_MODULE_MAKER) {
+		pr_err("%s:%d Invalid offset. size = %d, offset = 0x%x\n",
+			__func__, __LINE__, e_ctrl->cal_data.num_data,
+			EEPROM_OFFSET_MODULE_MAKER);
+	} else {
+		CDBG("%s maker id is not set. %d, %d\n",
+			__func__, e_ctrl->subdev_id,  e_ctrl->cal_data.num_data);
+	}
+#endif
+
 free_mem:
 	kfree(power_setting_array32);
 	kfree(power_setting_array);
@@ -1863,6 +1924,11 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 #endif
 
 	e_ctrl->is_supported = (e_ctrl->is_supported << 1) | 1;
+
+#ifdef CONFIG_MACH_LGE
+	msm_eeprom_create_sysfs();
+#endif
+
 	CDBG("%s X\n", __func__);
 	return rc;
 
@@ -1974,6 +2040,9 @@ static int __init msm_eeprom_init_module(void)
 static void __exit msm_eeprom_exit_module(void)
 {
 	platform_driver_unregister(&msm_eeprom_platform_driver);
+#ifdef CONFIG_MACH_LGE
+	msm_eeprom_destroy_sysfs();
+#endif
 	spi_unregister_driver(&msm_eeprom_spi_driver);
 	i2c_del_driver(&msm_eeprom_i2c_driver);
 }

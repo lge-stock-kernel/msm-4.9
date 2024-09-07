@@ -111,6 +111,9 @@ struct ion_buffer {
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
 	pid_t pid;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	size_t highorder_size;
+#endif
 };
 void ion_buffer_destroy(struct ion_buffer *buffer);
 
@@ -219,6 +222,9 @@ struct ion_heap {
 	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
 	atomic_long_t total_allocated;
 	atomic_long_t total_handles;
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	size_t free_highorder_size;
+#endif
 };
 
 /**

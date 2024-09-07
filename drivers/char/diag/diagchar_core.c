@@ -47,6 +47,10 @@
 #include <linux/compat.h>
 #endif
 
+#ifdef CONFIG_LGE_DIAG_BYPASS
+#include "lg_diag_bypass.h"
+#endif
+
 MODULE_DESCRIPTION("Diag Char Driver");
 MODULE_LICENSE("GPL v2");
 
@@ -166,6 +170,12 @@ static struct mutex apps_data_mutex;
 uint16_t diag_debug_mask;
 void *diag_ipc_log;
 #endif
+
+/* [LGE_S][BSP_Modem] LGSSL to support testmode cmd */
+#ifdef CONFIG_LGE_DM_APP
+extern bool is_socket_mode;
+#endif
+/* [LGE_E][BSP_Modem] LGSSL to support testmode cmd */
 
 static void diag_md_session_close(int pid);
 
@@ -1804,6 +1814,15 @@ static int diag_switch_logging(struct diag_logging_mode_param_t *param)
 		param->peripheral_mask = peripheral_mask;
 	}
 
+/* [LGE_S][BSP_Modem] LGSSL to support testmode cmd */
+#ifdef CONFIG_LGE_DM_APP
+    if (param->req_mode == SOCKET_MODE)
+		is_socket_mode = true;
+	else
+		is_socket_mode = false;
+#endif
+/* [LGE_E][BSP_Modem] LGSSL to support testmode cmd */
+
 	switch (param->req_mode) {
 	case CALLBACK_MODE:
 	case UART_MODE:
@@ -2573,6 +2592,7 @@ long diagchar_compat_ioctl(struct file *filp,
 	uint16_t remote_dev;
 	struct diag_dci_client_tbl *dci_client = NULL;
 	struct diag_logging_mode_param_t mode_param;
+	struct diag_con_all_param_t con_param;
 	struct diag_query_pid_t pid_query;
 
 	switch (iocmd) {
@@ -2692,6 +2712,15 @@ long diagchar_compat_ioctl(struct file *filp,
 			return -EFAULT;
 		result = diag_ioctl_query_pd_logging(&mode_param);
 		break;
+	case DIAG_IOCTL_QUERY_CON_ALL:
+		con_param.diag_con_all = DIAG_CON_ALL;
+		con_param.num_peripherals = NUM_PERIPHERALS;
+		if (copy_to_user((void __user *)ioarg, &con_param,
+				sizeof(struct diag_con_all_param_t)))
+			result = -EFAULT;
+		else
+			result = 0;
+		break;
 	case DIAG_IOCTL_QUERY_MD_PID:
 		if (copy_from_user((void *)&pid_query, (void __user *)ioarg,
 				   sizeof(pid_query))) {
@@ -2722,6 +2751,7 @@ long diagchar_ioctl(struct file *filp,
 	uint16_t remote_dev;
 	struct diag_dci_client_tbl *dci_client = NULL;
 	struct diag_logging_mode_param_t mode_param;
+	struct diag_con_all_param_t con_param;
 	struct diag_query_pid_t pid_query;
 
 	switch (iocmd) {
@@ -2841,6 +2871,15 @@ long diagchar_ioctl(struct file *filp,
 			return -EFAULT;
 		result = diag_ioctl_query_pd_logging(&mode_param);
 		break;
+	case DIAG_IOCTL_QUERY_CON_ALL:
+		con_param.diag_con_all = DIAG_CON_ALL;
+		con_param.num_peripherals = NUM_PERIPHERALS;
+		if (copy_to_user((void __user *)ioarg, &con_param,
+				sizeof(struct diag_con_all_param_t)))
+			result = -EFAULT;
+		else
+			result = 0;
+		break;			
 	case DIAG_IOCTL_QUERY_MD_PID:
 		if (copy_from_user((void *)&pid_query, (void __user *)ioarg,
 				   sizeof(pid_query))) {
@@ -3717,7 +3756,12 @@ static ssize_t diagchar_write(struct file *file, const char __user *buf,
 		return -EIO;
 	}
 
+
+#ifdef CONFIG_LGE_DIAG_BYPASS
+	if (driver->logging_mode == DIAG_USB_MODE && !driver->usb_connected && !lge_bypass_status()) {
+#else
 	if (driver->logging_mode == DIAG_USB_MODE && !driver->usb_connected) {
+#endif
 		if (!((pkt_type == DCI_DATA_TYPE) ||
 		    (pkt_type == DCI_PKT_TYPE) ||
 		    (pkt_type & DATA_TYPE_DCI_LOG) ||
@@ -4093,6 +4137,13 @@ static int __init diagchar_init(void)
 			poolsize_usb_apps + 1 + (NUM_PERIPHERALS * 6));
 	driver->num_clients = max_clients;
 	driver->logging_mode = DIAG_USB_MODE;
+
+/* [LGE_S][BSP_Modem] LGSSL to support testmode cmd */
+#ifdef CONFIG_LGE_DM_APP
+	is_socket_mode = false;
+#endif
+/* [LGE_E][BSP_Modem] LGSSL to support testmode cmd */
+
 	for (i = 0; i < NUM_UPD; i++) {
 		driver->pd_logging_mode[i] = 0;
 		driver->pd_session_clear[i] = 0;

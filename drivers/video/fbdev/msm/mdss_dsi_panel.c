@@ -30,12 +30,31 @@
 #endif
 #include "mdss_debug.h"
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_MFTS)
+#include "lge/mfts_mode.h"
+#endif
+
+#if defined(CONFIG_PXLW_IRIS3)
+#include "mdss_dsi_iris3.h"
+#include "mdss_dsi_iris3_lightup.h"
+#include "mdss_dsi_iris3_lightup_ocp.h"
+#include "mdss_dsi_iris3_pq.h"
+#endif
+
 #define DT_CMD_HDR 6
 #define DEFAULT_MDP_TRANSFER_TIME 14000
 
 #define VSYNC_DELAY msecs_to_jiffies(17)
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
+
+#if defined(CONFIG_LGE_DISPLAY_EXTERNAL_BL)
+extern void ext_bl_lcd_backlight_set_level(int level);
+#endif
+
+#if defined(CONFIG_BACKLIGHT_SGM37603A)
+extern void sgm37603a_lcd_backlight_set_level(int level, int cabc);
+#endif
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -102,6 +121,13 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	pr_debug("%s: ndx=%d level=%d duty=%d\n", __func__,
 					ctrl->ndx, level, duty);
 
+#if defined(CONFIG_PXLW_IRIS3)
+	if (iris_is_valid_cfg()) {
+		/*continuous splash should not setting dbc use dma*/
+		if (IRIS_CONT_SPLASH_LK != iris_get_cont_splash_type())
+			iris_dbc_bl_user_set(level);
+	}
+#endif
 	if (ctrl->pwm_period >= USEC_PER_SEC) {
 		ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
 		if (ret) {
@@ -183,8 +209,13 @@ static void mdss_dsi_panel_apply_settings(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
+			struct dsi_panel_cmds *pcmds, u32 flags)
+#else
 static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds, u32 flags)
+#endif
 {
 	struct dcs_cmd_req cmdreq;
 	struct mdss_panel_info *pinfo;
@@ -218,6 +249,7 @@ static struct dsi_cmd_desc backlight_cmd = {
 	led_pwm1
 };
 
+
 static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
 	struct dcs_cmd_req cmdreq;
@@ -245,7 +277,14 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	else
 		cmdreq.flags |= CMD_REQ_LP_MODE;
 
+#if defined(CONFIG_PXLW_IRIS3)
+	if (iris_is_valid_cfg())
+		iris_panel_cmd_passthrough(ctrl, &cmdreq);
+	else
+		mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+#else
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+#endif
 }
 
 static void mdss_dsi_panel_set_idle_mode(struct mdss_panel_data *pdata,
@@ -298,6 +337,12 @@ static bool mdss_dsi_panel_get_idle_mode(struct mdss_panel_data *pdata)
 	return ctrl->idle;
 }
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_OVERRIDE_MDSS_DSI_PANEL_RESET)
+/*
+ * mdss_dsi_panel_reset() should be defined in other file.
+ */
+int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
+#else
 static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	int rc = 0;
@@ -343,6 +388,22 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 			goto mode_gpio_err;
 		}
 	}
+#if defined(CONFIG_PXLW_IRIS3)
+	if (gpio_is_valid(ctrl_pdata->abyp_gpio)) {
+		rc = gpio_request(ctrl_pdata->abyp_gpio, "analog_bypass");
+		if (rc) {
+			pr_err("request analog bypass gpio failed,rc=%d\n", rc);
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->iris_rst_gpio)) {
+		rc = gpio_request(ctrl_pdata->iris_rst_gpio, "iris_reset");
+		if (rc) {
+			pr_err("request iris reset gpio failed,rc=%d\n", rc);
+			if (gpio_is_valid(ctrl_pdata->abyp_gpio))
+				gpio_free(ctrl_pdata->abyp_gpio);
+		}
+	}
+#endif
 	return rc;
 
 mode_gpio_err:
@@ -445,6 +506,26 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 				usleep_range(100, 110);
 			}
 
+#if defined(CONFIG_PXLW_IRIS3)
+			if (gpio_is_valid(ctrl_pdata->iris_rst_gpio)) {
+				if (pdata->panel_info.rst_seq_len) {
+					rc = gpio_direction_output(ctrl_pdata->iris_rst_gpio,
+						pdata->panel_info.rst_seq[0]);
+					if (rc) {
+						pr_err("%s: unable to set dir for iris rst gpio\n", __func__);
+						goto exit;
+					}
+				}
+
+				for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
+					gpio_set_value((ctrl_pdata->iris_rst_gpio),
+						pdata->panel_info.rst_seq[i]);
+					if (pdata->panel_info.rst_seq[++i])
+						usleep_range(pinfo->rst_seq[i] * 1000, pinfo->rst_seq[i] * 1000);
+				}
+			}
+#endif
+
 			if (pdata->panel_info.rst_seq_len) {
 				rc = gpio_direction_output(ctrl_pdata->rst_gpio,
 					pdata->panel_info.rst_seq[0]);
@@ -520,11 +601,18 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		gpio_free(ctrl_pdata->rst_gpio);
 		if (gpio_is_valid(ctrl_pdata->mode_gpio))
 			gpio_free(ctrl_pdata->mode_gpio);
+#if defined(CONFIG_PXLW_IRIS3)
+		if (gpio_is_valid(ctrl_pdata->iris_rst_gpio)) {
+			gpio_set_value(ctrl_pdata->iris_rst_gpio, 0);
+			gpio_free(ctrl_pdata->iris_rst_gpio);
+		}
+#endif
 	}
 
 exit:
 	return rc;
 }
+#endif
 
 /**
  * mdss_dsi_roi_merge() -  merge two roi into single roi
@@ -606,6 +694,10 @@ static void mdss_dsi_send_col_page_addr(struct mdss_dsi_ctrl_pdata *ctrl,
 	cmdreq.cb = NULL;
 
 	cmdreq.cmds = set_col_page_addr_cmd;
+#if defined(CONFIG_PXLW_IRIS3)
+	if (iris_is_valid_cfg())
+		iris_panel_cmd_passthrough(ctrl, &cmdreq);
+#endif
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
@@ -813,6 +905,9 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_dsi_ctrl_pdata *sctrl = NULL;
+#if defined(CONFIG_PXLW_IRIS3) && defined(IRIS3_BL_CTRL)
+	struct iris_setting_info *psetting = NULL;
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -830,6 +925,14 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 
 	if ((bl_level < pdata->panel_info.bl_min) && (bl_level != 0))
 		bl_level = pdata->panel_info.bl_min;
+#if defined(CONFIG_PXLW_IRIS3) && defined(IRIS3_BL_CTRL)
+	psetting = iris_get_setting();
+	psetting->quality_cur.system_brightness = bl_level;
+	/* Don't set panel's brightness during HDR/SDR2HDR */
+	/* Set panel's brightness when sdr2hdr mode is 3 */
+	if (iris_is_valid_cfg() && psetting->quality_cur.pq_setting.sdr2hdr != SDR2HDR_Bypass && iris_get_sdr2hdr_mode() != 3)
+		return;
+#endif
 
 	switch (ctrl_pdata->bklt_ctrl) {
 	case BL_WLED:
@@ -862,6 +965,16 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 				mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
 		}
 		break;
+#if defined(CONFIG_LGE_DISPLAY_COMMON)
+	case BL_OTHERS:
+#if defined(CONFIG_LGE_DISPLAY_EXTERNAL_BL)
+		ext_bl_lcd_backlight_set_level(bl_level);
+#endif
+#if defined(CONFIG_BACKLIGHT_SGM37603A)
+		sgm37603a_lcd_backlight_set_level(bl_level, ctrl_pdata->lge_extra.cabc_status);
+#endif
+		break;
+#endif
 	default:
 		pr_err("%s: Unknown bl_ctrl configuration\n",
 			__func__);
@@ -885,12 +998,18 @@ static void mdss_dsi_panel_on_hdmi(struct mdss_dsi_ctrl_pdata *ctrl,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_OVERRIDE_MDSS_DSI_PANEL_ON)
+int mdss_dsi_panel_on(struct mdss_panel_data *pdata);
+#else
 static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
 	struct mdss_panel_info *pinfo;
 	struct dsi_panel_cmds *on_cmds;
 	int ret = 0;
+#if defined(CONFIG_PXLW_IRIS3)
+	int len;
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -917,8 +1036,41 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	pr_debug("%s: ndx=%d cmd_cnt=%d\n", __func__,
 				ctrl->ndx, on_cmds->cmd_cnt);
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	LGE_MDELAY(ctrl->lge_extra.pre_on_cmds_delay);
+#endif
+
+#if defined(CONFIG_PXLW_IRIS3)
+	len = on_cmds->cmd_cnt;
+#if defined(IRIS3_ABYP_LIGHTUP)
+	// Use Iris3 Analog bypass mode to light up panel
+	// Assume the AP output is LP11 here
+	iris_abyp_lightup_set(2);
+	iris_abyp_lightup(ctrl);
+#else
+	if (iris_is_valid_cfg()) {
+		if (iris_abyp_lightup_get() == 0) {
+			iris_lightup(ctrl, on_cmds);
+			len = 0;
+		} else {
+			iris_abyp_lightup(ctrl);
+		}
+	} else {
+		iris_abyp_lightup_set(2);
+		iris_abyp_lightup(ctrl);
+	}
+#endif // IRIS3_ABYP_LIGHTUP
+	if (len)
+		mdss_dsi_panel_cmds_send(ctrl, on_cmds, CMD_REQ_COMMIT);
+#else
+
 	if (on_cmds->cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, on_cmds, CMD_REQ_COMMIT);
+
+#endif // CONFIG_PXLW_IRIS3
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COLOR_MANAGER)
+	lge_mdss_dsi_screen_color_mode_set(ctrl);
+#endif
 
 	if (pinfo->compression_mode == COMPRESSION_DSC)
 		mdss_dsi_panel_dsc_pps_send(ctrl, pinfo);
@@ -932,6 +1084,7 @@ end:
 	pr_debug("%s:-\n", __func__);
 	return ret;
 }
+#endif
 
 #ifdef TARGET_HW_MDSS_HDMI
 static void mdss_dsi_post_panel_on_hdmi(struct mdss_panel_info *pinfo)
@@ -975,7 +1128,18 @@ static int mdss_dsi_post_panel_on(struct mdss_panel_data *pdata)
 	cmds = &ctrl->post_panel_on_cmds;
 	if (cmds->cmd_cnt) {
 		msleep(VSYNC_DELAY);	/* wait for a vsync passed */
+#if defined(CONFIG_PXLW_IRIS3)
+		if (iris_is_valid_cfg()) {
+			if (iris_abyp_lightup_get() == 0)
+				iris_send_cmd_to_panel(ctrl, cmds);
+			else
+				mdss_dsi_panel_cmds_send(ctrl, cmds, CMD_REQ_COMMIT);
+		} else {
+			mdss_dsi_panel_cmds_send(ctrl, cmds, CMD_REQ_COMMIT);
+		}
+#else
 		mdss_dsi_panel_cmds_send(ctrl, cmds, CMD_REQ_COMMIT);
+#endif	
 	}
 
 	mdss_dsi_post_panel_on_hdmi(pinfo);
@@ -1003,6 +1167,12 @@ static void mdss_dsi_panel_off_hdmi(struct mdss_dsi_ctrl_pdata *ctrl,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_OVERRIDE_MDSS_DSI_PANEL_OFF)
+/*
+ * mdss_dsi_panel_off() should be defined in other file.
+*/
+extern int mdss_dsi_panel_off(struct mdss_panel_data *pdata);
+#else
 static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
@@ -1024,8 +1194,15 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 			goto end;
 	}
 
+#if defined(CONFIG_PXLW_IRIS3) && !defined(IRIS3_ABYP_LIGHTUP)
+	if (iris_is_light_up())
+		iris_lightoff(ctrl, &ctrl->off_cmds);
+	else if (ctrl->off_cmds.cmd_cnt)
+		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds, CMD_REQ_COMMIT);
+#else
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds, CMD_REQ_COMMIT);
+#endif
 
 	mdss_dsi_panel_off_hdmi(ctrl, pinfo);
 
@@ -1035,6 +1212,7 @@ end:
 	pr_debug("%s:-\n", __func__);
 	return 0;
 }
+#endif
 
 static int mdss_dsi_panel_low_power_config(struct mdss_panel_data *pdata,
 	int enable)
@@ -1125,9 +1303,13 @@ static void mdss_dsi_parse_trigger(struct device_node *np, char *trigger,
 	}
 }
 
-
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+int mdss_dsi_parse_dcs_cmds(struct device_node *np,
+		struct dsi_panel_cmds *pcmds, char *cmd_key, char *link_key)
+#else
 static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 		struct dsi_panel_cmds *pcmds, char *cmd_key, char *link_key)
+#endif
 {
 	const char *data;
 	int blen = 0, len;
@@ -1981,6 +2163,21 @@ static bool mdss_dsi_parse_esd_status_len(struct device_node *np,
 
 	return true;
 }
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_ESD_NOT_CHECK_WITH_FACTORY_CABLE)
+static bool factory_cable(void)
+{
+	enum lge_boot_mode_type lge_boot_mode;
+
+	lge_boot_mode = lge_get_boot_mode();
+
+	if(lge_boot_mode == LGE_BOOT_MODE_CHARGER ||
+		lge_boot_mode == LGE_BOOT_MODE_CHARGERLOGO ||
+		lge_boot_mode == LGE_BOOT_MODE_NORMAL )
+		return false;
+	else
+		return true;
+}
+#endif
 
 static void mdss_dsi_parse_esd_params(struct device_node *np,
 	struct mdss_dsi_ctrl_pdata *ctrl)
@@ -1994,6 +2191,12 @@ static void mdss_dsi_parse_esd_params(struct device_node *np,
 
 	pinfo->esd_check_enabled = of_property_read_bool(np,
 		"qcom,esd-check-enabled");
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_ESD_NOT_CHECK_WITH_FACTORY_CABLE)
+	if(factory_cable() && !lge_get_disable_esd_absent_bettery()) {
+		pinfo->esd_check_enabled = false;
+	}
+	pr_info("%s : esd_check is %d\n",__func__,pinfo->esd_check_enabled);
+#endif
 
 	if (!pinfo->esd_check_enabled)
 		return;
@@ -2365,6 +2568,11 @@ int mdss_panel_parse_bl_settings(struct device_node *np,
 			pr_debug("%s: Configured DCS_CMD bklt ctrl\n",
 								__func__);
 		}
+#if defined(CONFIG_LGE_DISPLAY_COMMON)
+		else if (!strcmp(data, "bl_others")){
+			ctrl_pdata->bklt_ctrl = BL_OTHERS;
+		}
+#endif
 	}
 	return 0;
 }
@@ -2418,6 +2626,10 @@ void mdss_dsi_unregister_bl_settings(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	if (ctrl_pdata->bklt_ctrl == BL_WLED)
 		led_trigger_unregister_simple(bl_led_trigger);
+#if defined(CONFIG_PXLW_IRIS3)
+	if (ctrl_pdata->bklt_ctrl == BL_WLED)
+		iris_set_bklt_ctrl(NULL);
+#endif
 }
 
 static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
@@ -2699,7 +2911,10 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	const char *data;
 	static const char *pdest;
 	struct mdss_panel_info *pinfo = &(ctrl_pdata->panel_data.panel_info);
-
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_BL_USE_BLMAP)
+	u32 *array;
+	int i;
+#endif //CONFIG_LGE_DISPLAY_BL_USE_BLMAP
 	if (mdss_dsi_is_hw_config_split(ctrl_pdata->shared_data))
 		pinfo->is_split_display = true;
 
@@ -2763,7 +2978,37 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-bl-max-level", &tmp);
 	pinfo->bl_max = (!rc ? tmp : 255);
 	ctrl_pdata->bklt_max = pinfo->bl_max;
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_BL_USE_BLMAP)
+	rc = of_property_read_u32(np, "lge,blmap-size", &tmp);
+	pinfo->blmap_size = (!rc ? tmp : 0);
 
+	if (pinfo->blmap_size) {
+		array = kzalloc(sizeof(u32) * pinfo->blmap_size, GFP_KERNEL);
+		if (!array)
+			return -ENOMEM;
+
+		rc = of_property_read_u32_array(np, "lge,blmap", array, pinfo->blmap_size);
+		if (rc) {
+			pr_err("%s:%d, unable to read backlight map\n", __func__, __LINE__);
+			kfree(array);
+			goto error;
+		}
+
+		pinfo->blmap = kzalloc(sizeof(int) * pinfo->blmap_size, GFP_KERNEL);
+		if (!pinfo->blmap) {
+			kfree(array);
+			return -ENOMEM;
+		}
+
+		for (i = 0; i < pinfo->blmap_size; i++)
+			pinfo->blmap[i] = array[i];
+
+		kfree(array);
+
+	} else {
+		pinfo->blmap = NULL;
+	}
+#endif //CONFIG_LGE_DISPLAY_BL_USE_BLMAP
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-interleave-mode", &tmp);
 	pinfo->mipi.interleave_mode = (!rc ? tmp : 0);
 
@@ -2880,6 +3125,10 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		pinfo->mode_gpio_state = MODE_GPIO_NOT_VALID;
 	}
 
+#if defined(CONFIG_PXLW_IRIS3)
+    iris_parse_params(np, ctrl_pdata, mdss_dsi_parse_dcs_cmds);
+#endif
+
 	rc = of_property_read_u32(np, "qcom,mdss-mdp-transfer-time-us", &tmp);
 	pinfo->mdp_transfer_time_us = (!rc ? tmp : DEFAULT_MDP_TRANSFER_TIME);
 
@@ -2932,6 +3181,14 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	mdss_dsi_parse_dfps_config(np, ctrl_pdata);
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	lge_mdss_panel_parse_dt_extra(np, ctrl_pdata);
+#endif
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_RECOVERY)
+	rc = of_property_read_u32(np, "lge,mdss-mdp-esd-bl-delay", &tmp);
+	pinfo->esd_bl_delay = (!rc ? tmp : 0);
+
+#endif
 	rc = mdss_panel_parse_dt_hdmi(np, ctrl_pdata);
 	if (rc)
 		goto error;
@@ -2967,11 +3224,20 @@ int mdss_dsi_panel_init(struct device_node *node,
 		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
 		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
 	}
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	/* initialization for panel param before dtsi parsing */
+	ctrl_pdata->lge_extra.esc_clk_rate = 0;
+#endif
+
 	rc = mdss_panel_parse_dt(node, ctrl_pdata);
 	if (rc) {
 		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
 		return rc;
 	}
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_MFTS)
+	lge_init_mfts();
+#endif
 
 	pinfo->dynamic_switch_pending = false;
 	pinfo->is_lpm_mode = false;
@@ -2986,6 +3252,13 @@ int mdss_dsi_panel_init(struct device_node *node,
 	ctrl_pdata->panel_data.apply_display_setting =
 			mdss_dsi_panel_apply_display_setting;
 	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	lge_mdss_dsi_store_ctrl_pdata(ctrl_pdata);
+
+	lge_mdss_panel_select_initial_cmd_set(ctrl_pdata);
+#endif
+
 	ctrl_pdata->panel_data.get_idle = mdss_dsi_panel_get_idle_mode;
 	return 0;
 }

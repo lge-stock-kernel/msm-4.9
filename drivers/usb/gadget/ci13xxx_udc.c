@@ -70,6 +70,10 @@
 
 #include "ci13xxx_udc.h"
 
+#ifdef CONFIG_LGE_USB_FACTORY
+#include <soc/qcom/lge/board_lge.h>
+#define PORTSC_PFSC BIT(24)
+#endif
 /******************************************************************************
  * DEFINE
  *****************************************************************************/
@@ -359,6 +363,13 @@ static int hw_device_reset(struct ci13xxx *udc)
 		pr_err("lpm = %i", hw_bank.lpm);
 		return -ENODEV;
 	}
+
+#ifdef CONFIG_LGE_USB_FACTORY
+	/* USB FS only used in 130K */
+	if ((lge_get_boot_mode() == LGE_BOOT_MODE_QEM_130K) ||
+			(lge_get_boot_mode() == LGE_BOOT_MODE_PIF_130K))
+		hw_cwrite(CAP_PORTSC, PORTSC_PFSC, PORTSC_PFSC);
+#endif
 
 	return 0;
 }

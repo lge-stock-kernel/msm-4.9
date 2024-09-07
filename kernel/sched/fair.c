@@ -135,7 +135,7 @@ unsigned int sysctl_sched_child_runs_first __read_mostly;
 unsigned int sysctl_sched_wakeup_granularity = 1000000UL;
 unsigned int normalized_sysctl_sched_wakeup_granularity = 1000000UL;
 
-const_debug unsigned int sysctl_sched_migration_cost = 500000UL;
+const_debug unsigned int sysctl_sched_migration_cost = 10000UL;
 
 /*
  * The exponential sliding  window over which load is averaged for shares
@@ -10349,9 +10349,8 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	this_rq->idle_stamp = rq_clock(this_rq);
 
-	if (!energy_aware() &&
-	    (this_rq->avg_idle < sysctl_sched_migration_cost ||
-	     !this_rq->rd->overload)) {
+	if (this_rq->avg_idle < sysctl_sched_migration_cost ||
+	     !this_rq->rd->overload) {
 		rcu_read_lock();
 		sd = rcu_dereference_check_sched_domain(this_rq->sd);
 		if (sd)

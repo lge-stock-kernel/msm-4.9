@@ -512,7 +512,7 @@
 				qcom,max-current = <1000>;
 				qcom,duration = <1280>;
 				qcom,id = <0>;
-				qcom,current = <625>;
+				qcom,current = <1000>;
 			};
 
 			pmi8940_flash1: qcom,flash_1 {
@@ -523,7 +523,7 @@
 				qcom,max-current = <1000>;
 				qcom,duration = <1280>;
 				qcom,id = <1>;
-				qcom,current = <625>;
+				qcom,current = <1000>;
 			};
 
 			pmi8940_torch0: qcom,torch_0 {
@@ -531,9 +531,9 @@
 				qcom,led-name = "led:torch_0";
 				qcom,default-led-trigger =
 						"torch0_trigger";
-				qcom,max-current = <200>;
+				qcom,max-current = <100>;
 				qcom,id = <0>;
-				qcom,current = <120>;
+				qcom,current = <100>;
 			};
 
 			pmi8940_torch1: qcom,torch_1 {
@@ -541,9 +541,9 @@
 				qcom,led-name = "led:torch_1";
 				qcom,default-led-trigger =
 						"torch1_trigger";
-				qcom,max-current = <200>;
+				qcom,max-current = <100>;
 				qcom,id = <1>;
-				qcom,current = <120>;
+				qcom,current = <100>;
 			};
 
 			pmi8940_switch: qcom,switch {
@@ -562,11 +562,11 @@
 		};
 
 		pmi_haptic: qcom,haptic@c000 {
-			compatible = "qcom,qpnp-haptic";
+			compatible = "qcom,qpnp-haptics";
 			reg = <0xc000 0x100>;
 			interrupts = <0x3 0xc0 0x0 IRQ_TYPE_EDGE_BOTH>,
 				     <0x3 0xc0 0x1 IRQ_TYPE_EDGE_BOTH>;
-			interrupt-names = "sc-irq", "play-irq";
+			interrupt-names = "hap-sc-irq", "hap-play-irq";
 			qcom,pmic-revid = <&pmi8940_revid>;
 			vcc_pon-supply = <&pon_perph_reg>;
 			qcom,play-mode = "direct";

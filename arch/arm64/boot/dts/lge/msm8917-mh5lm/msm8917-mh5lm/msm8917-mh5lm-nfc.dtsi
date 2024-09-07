@@ -1,0 +1,47 @@
+/*
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8917-mh5lm_common/msm8917-mh5lm_common-nfc.dtsi"
+
+&pm8937_gpios {
+        gpio@c400 {
+                qcom,mode = <0>;      /* QPNP_PIN_MODE_DIG_IN */
+                qcom,pull = <5>;      /* QPNP_PIN_PULL_NO */
+                qcom,vin-sel = <2>;   /* Select 1.8V Source */
+                qcom,master-en = <1>; /* Enable Module */
+                status = "ok";
+        };
+};
+
+&i2c_2 {
+        qcom,disable-dma;
+        status = "ok";
+        pn547@28 {
+                status = "ok";
+                compatible = "nxp,pn547";
+                reg = <0x28>;
+                nxp,gpio_sda = <&tlmm 6 0x00>;
+                nxp,gpio_scl = <&tlmm 7 0x00>;
+                nxp,gpio_ven = <&tlmm 68 0x00>;
+                nxp,gpio_mode = <&tlmm 13 0x00>;
+                nxp,gpio_irq = <&tlmm 130 0x00>;
+                nxp,gpio_clkreq = <&pm8937_gpios 5 0x00>;
+                nxp,clk-src = "BBCLK2";
+                interrupt-parent = <&tlmm>;
+                nxp,i2c-pull-up = <1>;
+                interrupts = <130 0>;
+                interrupt-names = "nfc_irq";
+                clocks = <&clock_gcc clk_bb_clk2_pin>;
+                clock-names = "pin_clk";
+        };
+};

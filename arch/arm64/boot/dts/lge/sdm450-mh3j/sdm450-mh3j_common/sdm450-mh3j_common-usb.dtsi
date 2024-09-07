@@ -1,0 +1,41 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../../sdm450-usb-typec-tusb422.dtsi"
+
+&usb3 {
+        qcom,dwc-vadc = <&pmi632_vadc>;
+        qcom,usbin-vadc = <&pmi632_vadc>;
+};
+
+&pm8953_typec {
+	status = "disabled";
+};
+
+&pm8953_gpios {
+        /* GPIO 7 (SBU_SEL) */
+        gpio@c600 {
+                qcom,mode = <0>;
+                qcom,output-type = <0>;
+                qcom,pull = <0>;
+                qcom,vin-sel = <2>;
+                qcom,out-strength = <3>;
+                qcom,src-sel = <0>;
+                qcom,master-en = <1>;
+                status = "okay";
+        };
+};
+&qusb_phy {
+	qcom,qusb-phy-tune = <0x28 0x93 0x83 0xC7 0x03>;
+	qcom,qusb-phy-tune-host = <0x38 0xf3 0x83 0xC7 0x07>;
+};

@@ -73,6 +73,23 @@ static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
  */
 bool use_spi_crc = 1;
 module_param(use_spi_crc, bool, 0);
+/*
+ * LGE_CHANGE_S
+ * Date     : 2014.03.19
+ * Author   : bohyun.jung@lge.com
+ * Comment  : Dynamic MMC log
+ *            set mmc log level by accessing '/sys/module/mmc_core/parameters/debug_level' through adb shell.
+ */
+#if defined(CONFIG_LGE_MMC_DYNAMIC_LOG)
+
+uint32_t mmc_debug_level = 6;                   // show pr_info.
+
+module_param_named(debug_level, mmc_debug_level, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(
+    debug_level,
+    "MMC/SD cards debug_level");
+
+#endif  /* end of LGE_CHANGE_E */
 
 static int mmc_schedule_delayed_work(struct delayed_work *work,
 				     unsigned long delay)
@@ -2092,6 +2109,13 @@ int mmc_interrupt_hpi(struct mmc_card *card)
 	} while (!err);
 
 out:
+#ifdef CONFIG_MACH_LGE
+	/* add debug code
+	 */
+	if (err) {
+		pr_err("%s: mmc_interrupt_hpi() failed. err: (%d)\n", mmc_hostname(card->host), err);
+	}
+#endif
 	mmc_release_host(card->host);
 	return err;
 }
@@ -2248,7 +2272,15 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 			 */
 			limit_us = 3000000;
 		else
+			#ifdef CONFIG_MACH_LGE
+			/* LGE_CHANGE, 2015-09-23, Although we already applied enough time,
+			 * timeout-error occurs until now with several-ultimate-crappy-memory.
+			 * So, we give more time than before.
+			 */
+			limit_us = 300000;
+			#else
 			limit_us = 100000;
+			#endif
 
 		/*
 		 * SDHC cards always use these fixed values.
@@ -3341,7 +3373,13 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE, 2015-09-23, Augmenting delay-time for some crappy card.
+	 */
+	mmc_delay(20);
+#else
 	mmc_delay(10);
+#endif
 
 	mmc_host_clk_release(host);
 }
@@ -3349,7 +3387,16 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 void mmc_power_off(struct mmc_host *host)
 {
 	if (host->ios.power_mode == MMC_POWER_OFF)
+	#ifdef CONFIG_MACH_LGE
+	/* If it is already power-off, skip below.
+	 */
+	{
+		printk(KERN_INFO "[LGE][MMC][%-18s( )] host->index:%d, already power-off, skip below\n", __func__, host->index);
 		return;
+	}
+	#else
+		return;
+	#endif
 
 	mmc_host_clk_hold(host);
 
@@ -3434,8 +3481,15 @@ int mmc_resume_bus(struct mmc_host *host)
 	spin_unlock_irqrestore(&host->lock, flags);
 
 	mmc_bus_get(host);
-	if (host->ops->get_cd)
+
+	if (host->ops->get_cd) {
 		card_present = host->ops->get_cd(host);
+		if (!card_present) {
+			pr_err("%s: Card removed - card_present:%d\n",
+			       mmc_hostname(host), card_present);
+			mmc_card_set_removed(host->card);
+		}
+	}
 
 	if (host->bus_ops && !host->bus_dead && host->card && card_present) {
 		mmc_power_up(host, host->card->ocr);
@@ -3518,6 +3572,9 @@ void mmc_detach_bus(struct mmc_host *host)
 	mmc_bus_put(host);
 }
 
+#ifdef CONFIG_MACH_LGE
+unsigned int is_damaged_sd = 0;
+#endif
 static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 				bool cd_irq)
 {
@@ -3536,6 +3593,11 @@ static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 		device_can_wakeup(mmc_dev(host)))
 		pm_wakeup_event(mmc_dev(host), 5000);
 
+#ifdef CONFIG_MACH_LGE
+	if ( !(host->caps & MMC_CAP_NONREMOVABLE) && is_damaged_sd)
+		goto skip_detect;
+#endif
+
 	host->detect_change = 1;
 	/*
 	 * Change in cd_gpio state, so make sure detection part is
@@ -3548,6 +3610,11 @@ static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 		cancel_delayed_work(&host->detect);
 
 	mmc_schedule_delayed_work(&host->detect, delay);
+
+#ifdef CONFIG_MACH_LGE
+skip_detect:
+	return;
+#endif
 }
 
 /**
@@ -4451,6 +4518,10 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 		}
 	}
 
+	#ifdef CONFIG_MACH_LGE
+	printk(KERN_INFO "[LGE][MMC][%-18s( )] end, mmc%d, return %d\n", __func__, host->index, ret);
+	#endif
+
 	return ret;
 }
 
@@ -4510,6 +4581,10 @@ void mmc_rescan(struct work_struct *work)
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
 
+#ifdef CONFIG_MACH_LGE
+	int err = 0;
+#endif
+
 	spin_lock_irqsave(&host->lock, flags);
 	if (host->rescan_disable) {
 		spin_unlock_irqrestore(&host->lock, flags);
@@ -4568,10 +4643,22 @@ void mmc_rescan(struct work_struct *work)
 		mmc_release_host(host);
 		goto out;
 	}
+
+#ifdef CONFIG_MACH_LGE
+	err = mmc_rescan_try_freq(host, host->f_min);
+#else
 	mmc_rescan_try_freq(host, host->f_min);
+#endif
 	host->err_stats[MMC_ERR_CMD_TIMEOUT] = 0;
 	mmc_release_host(host);
 
+#ifdef CONFIG_MACH_LGE
+	if (err == -EIO && !(host->caps & MMC_CAP_NONREMOVABLE))
+	{
+		printk(KERN_INFO "[LGE][MMC][%-18s( )] mmc%d: SDcard is damaged or not exists\n", __func__, host->index);
+		is_damaged_sd = 1;
+	}
+#endif
  out:
 	if (host->caps & MMC_CAP_NEEDS_POLL)
 		mmc_schedule_delayed_work(&host->detect, HZ);

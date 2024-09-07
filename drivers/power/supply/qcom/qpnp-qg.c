@@ -40,7 +40,13 @@
 #include "qg-battery-profile.h"
 #include "qg-defs.h"
 
+#ifdef CONFIG_LGE_PM
+static int qg_debug_mask = QG_DEBUG_PON | QG_DEBUG_PROFILE |
+		QG_DEBUG_STATUS | QG_DEBUG_FIFO | QG_DEBUG_IRQ |
+		QG_DEBUG_SOC | QG_DEBUG_PM | QG_DEBUG_ALG_CL;
+#else
 static int qg_debug_mask;
+#endif
 module_param_named(
 	debug_mask, qg_debug_mask, int, 0600
 );
@@ -54,6 +60,17 @@ static int qg_esr_count = 3;
 module_param_named(
 	esr_count, qg_esr_count, int, 0600
 );
+
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+static struct power_supply_desc qg_psy_desc_extension;
+enum power_supply_property* extension_bms_properties(void);
+size_t extension_bms_num_properties(void);
+int extension_bms_get_property(struct power_supply *psy, enum power_supply_property prop, union power_supply_propval *val);
+int extension_bms_set_property(struct power_supply *psy, enum power_supply_property prop, const union power_supply_propval *val);
+int extension_bms_property_is_writeable(struct power_supply *psy, enum power_supply_property prop);
+
+struct device_node* extension_get_batt_profile(struct device_node* container, int resistance_id);
+#endif
 
 static bool is_battery_present(struct qpnp_qg *chip)
 {
@@ -308,9 +325,10 @@ static int qg_process_fifo(struct qpnp_qg *chip, u32 fifo_length)
 
 	/*
 	 * If there is pending data from suspend, append the new FIFO
-	 * data to it.
+	 * data to it. Only do this if we can accomadate 8 FIFOs
 	 */
-	if (chip->suspend_data) {
+	if (chip->suspend_data &&
+		(chip->kdata.fifo_length < (MAX_FIFO_LENGTH / 2))) {
 		j = chip->kdata.fifo_length; /* append the data */
 		chip->suspend_data = false;
 		qg_dbg(chip, QG_DEBUG_FIFO,
@@ -379,7 +397,7 @@ static int qg_process_accumulator(struct qpnp_qg *chip)
 		return rc;
 	}
 
-	if (!count) {
+	if (!count || count < 10) { /* Ignore small accumulator data */
 		pr_debug("No ACCUMULATOR data!\n");
 		return 0;
 	}
@@ -411,6 +429,8 @@ static int qg_process_accumulator(struct qpnp_qg *chip)
 	chip->kdata.fifo[index].interval = sample_interval;
 	chip->kdata.fifo[index].count = count;
 	chip->kdata.fifo_length++;
+	if (chip->kdata.fifo_length == MAX_FIFO_LENGTH)
+		chip->kdata.fifo_length = MAX_FIFO_LENGTH - 1;
 
 	if (chip->kdata.fifo_length == 1)	/* Only accumulator data */
 		chip->kdata.seq_no = chip->seq_no++ % U32_MAX;
@@ -1392,9 +1412,10 @@ static int qg_get_learned_capacity(void *data, int64_t *learned_cap_uah)
 		return rc;
 	}
 	*learned_cap_uah = cc_mah * 1000;
-
+#ifndef CONFIG_LGE_PM
 	qg_dbg(chip, QG_DEBUG_ALG_CL, "Retrieved learned capacity %llduah\n",
 					*learned_cap_uah);
+#endif
 	return 0;
 }
 
@@ -1529,6 +1550,9 @@ static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 
 	if (chip->charge_full) {
 		*soc = FULL_SOC;
+#ifdef CONFIG_LGE_PM_CCD
+		lge_get_ui_soc(chip, *soc * 10);
+#endif
 		return 0;
 	}
 
@@ -1538,6 +1562,9 @@ static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 		*soc = chip->maint_soc;
 	else
 		*soc = chip->msoc;
+#ifdef CONFIG_LGE_PM_CCD
+	lge_get_ui_soc(chip, *soc * 10);
+#endif
 
 	mutex_unlock(&chip->soc_lock);
 
@@ -1678,6 +1705,11 @@ static int qg_psy_set_property(struct power_supply *psy,
 		qg_dbg(chip, QG_DEBUG_STATUS, "SOH update: SOH=%d esr_actual=%d esr_nominal=%d\n",
 				chip->soh, chip->esr_actual, chip->esr_nominal);
 		break;
+#ifdef CONFIG_LGE_PM
+	case POWER_SUPPLY_PROP_CYCLE_COUNT:
+		rc = set_cycle_count(chip->counter, pval->intval);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_ESR_ACTUAL:
 		chip->esr_actual = pval->intval;
 		break;
@@ -1811,6 +1843,9 @@ static int qg_property_is_writeable(struct power_supply *psy,
 {
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
+#ifdef CONFIG_LGE_PM
+	case POWER_SUPPLY_PROP_CYCLE_COUNT:
+#endif
 	case POWER_SUPPLY_PROP_ESR_ACTUAL:
 	case POWER_SUPPLY_PROP_ESR_NOMINAL:
 	case POWER_SUPPLY_PROP_SOH:
@@ -2213,8 +2248,23 @@ static int qg_init_psy(struct qpnp_qg *chip)
 	qg_psy_cfg.of_node = NULL;
 	qg_psy_cfg.supplied_to = NULL;
 	qg_psy_cfg.num_supplicants = 0;
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+	qg_psy_desc_extension.name = qg_psy_desc.name;
+	qg_psy_desc_extension.type = qg_psy_desc.type;
+	qg_psy_desc_extension.external_power_changed = qg_psy_desc.external_power_changed;
+
+	qg_psy_desc_extension.properties = extension_bms_properties();
+	qg_psy_desc_extension.num_properties = extension_bms_num_properties();
+	qg_psy_desc_extension.get_property = extension_bms_get_property;
+	qg_psy_desc_extension.set_property = extension_bms_set_property;
+	qg_psy_desc_extension.property_is_writeable = extension_bms_property_is_writeable;
+
+	chip->qg_psy = devm_power_supply_register(chip->dev,
+				&qg_psy_desc_extension, &qg_psy_cfg);
+#else
 	chip->qg_psy = devm_power_supply_register(chip->dev,
 				&qg_psy_desc, &qg_psy_cfg);
+#endif
 	if (IS_ERR_OR_NULL(chip->qg_psy)) {
 		pr_err("Failed to register qg_psy rc = %ld\n",
 				PTR_ERR(chip->qg_psy));
@@ -2458,8 +2508,13 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 		return -ENXIO;
 	}
 
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+	profile_node = extension_get_batt_profile(batt_node,
+				chip->batt_id_ohm / 1000);
+#else
 	profile_node = of_batterydata_get_best_profile(batt_node,
 				chip->batt_id_ohm / 1000, NULL);
+#endif
 	if (IS_ERR(profile_node)) {
 		rc = PTR_ERR(profile_node);
 		pr_err("Failed to detect valid QG battery profile %d\n", rc);
@@ -2558,11 +2613,34 @@ static int qg_determine_pon_soc(struct qpnp_qg *chip)
 	u32 ocv_uv = 0, soc = 0, pon_soc = 0, full_soc = 0, cutoff_soc = 0;
 	u32 shutdown[SDAM_MAX] = {0};
 	char ocv_type[20] = "NONE";
+#ifdef CONFIG_LGE_PM_CCD
+#ifndef CONFIG_LGE_PM_QNOVO_QNS
+	int cycle_count = 0;
+#endif
+#endif
+
 
 	if (!chip->profile_loaded) {
 		qg_dbg(chip, QG_DEBUG_PON, "No Profile, skipping PON soc\n");
 		return 0;
 	}
+
+#ifdef CONFIG_LGE_PM_CCD
+#ifndef CONFIG_LGE_PM_QNOVO_QNS
+		pr_err("DT float =%d mV\n", chip->bp.float_volt_uv);
+		rc = get_cycle_count(chip->counter, &cycle_count);
+		if (cycle_count > 0x190)
+			chip->bp.float_volt_uv = chip->bp.float_volt_uv - 0xC350; //@over 400 cycle
+		else if (cycle_count > 0x12C)
+			chip->bp.float_volt_uv = chip->bp.float_volt_uv - 0x9C40; //@over 300 cycle
+		else if (cycle_count > 0xC8)
+			chip->bp.float_volt_uv = chip->bp.float_volt_uv - 0x4E20; //@over 200 cycle
+		else
+			pr_err("DT float is same with cbc float.\n");
+
+		pr_err("cycle = %d new cbc float = %d mV\n", cycle_count, chip->bp.float_volt_uv);
+#endif
+#endif
 
 	/* read all OCVs */
 	for (i = S7_PON_OCV; i < PON_OCV_MAX; i++) {
@@ -3750,6 +3828,10 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+#ifdef CONFIG_LGE_PM
+	extension_qg_load_dt();
+#endif
+
 	rc = qg_hw_init(chip);
 	if (rc < 0) {
 		pr_err("Failed to hw_init, rc=%d\n", rc);
@@ -3810,6 +3892,10 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 		pr_err("Failed to determine initial state, rc=%d\n", rc);
 		goto fail_device;
 	}
+
+#ifdef CONFIG_LGE_PM
+	extension_qg_load_icoeff_dt(chip);
+#endif
 
 	chip->awake_votable = create_votable("QG_WS", VOTE_SET_ANY,
 					 qg_awake_cb, chip);
@@ -3931,6 +4017,10 @@ static struct platform_driver qpnp_qg_driver = {
 	.shutdown	= qpnp_qg_shutdown,
 };
 module_platform_driver(qpnp_qg_driver);
+
+#ifdef CONFIG_LGE_PM_VENEER_PSY
+#include "../lge/extension-qpnp-qg.c"
+#endif
 
 MODULE_DESCRIPTION("QPNP QG Driver");
 MODULE_LICENSE("GPL v2");

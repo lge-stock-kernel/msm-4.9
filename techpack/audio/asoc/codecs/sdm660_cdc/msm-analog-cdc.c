@@ -80,6 +80,11 @@ enum {
 	BOOST_ON_FOREVER,
 };
 
+#ifdef CONFIG_MACH_LGE
+static bool gnd_cfilt = false;
+static bool atest_diff_mode = false;
+#endif
+
 static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 25, 1);
 static struct snd_soc_dai_driver msm_anlg_cdc_i2s_dai[];
 /* By default enable the internal speaker boost */
@@ -200,7 +205,9 @@ static void msm_anlg_cdc_set_auto_zeroing(struct snd_soc_codec *codec,
 static void msm_anlg_cdc_configure_cap(struct snd_soc_codec *codec,
 				       bool micbias1, bool micbias2);
 static bool msm_anlg_cdc_use_mb(struct snd_soc_codec *codec);
-
+#ifdef CONFIG_MACH_LGE
+static void remove_detach_mic_noise(struct snd_soc_codec *codec);
+#endif
 static int get_codec_version(struct sdm660_cdc_priv *sdm660_cdc)
 {
 	if (sdm660_cdc->codec_version == DRAX_CDC)
@@ -540,7 +547,11 @@ static void msm_anlg_cdc_mbhc_common_micb_ctrl(struct snd_soc_codec *codec,
 	case MBHC_COMMON_MICB_SET_VAL:
 		reg = MSM89XX_PMIC_ANALOG_MICB_1_VAL;
 		mask = 0xFF;
+#ifdef CONFIG_SND_USE_MBHC_EXTN_CABLE
+        val = (enable ? 0xA0 : 0x00);
+#else		
 		val = (enable ? 0xC0 : 0x00);
+#endif		
 		break;
 	case MBHC_COMMON_MICB_TAIL_CURR:
 		reg = MSM89XX_PMIC_ANALOG_MICB_1_EN;
@@ -931,6 +942,9 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.hph_pa_on_status = msm_anlg_cdc_mbhc_hph_pa_on_status,
 	.set_btn_thr = msm_anlg_cdc_mbhc_program_btn_thr,
 	.extn_use_mb = msm_anlg_cdc_use_mb,
+#ifdef CONFIG_MACH_LGE
+    .remove_detach_mic_noise = remove_detach_mic_noise,
+#endif	
 };
 
 static const uint32_t wcd_imped_val[] = {4, 8, 12, 13, 16,
@@ -2155,8 +2169,17 @@ static int msm_anlg_cdc_codec_enable_adc(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_PRE_PMU:
 		msm_anlg_cdc_codec_enable_adc_block(codec, 1);
 		if (w->reg == MSM89XX_PMIC_ANALOG_TX_2_EN)
+#ifdef CONFIG_MACH_LGE
+		{
+			if(gnd_cfilt)
+				snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MICB_1_CTL, 0x02, 0x00);
+			else
+				snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MICB_1_CTL, 0x02, 0x02);
+		}
+#else
 			snd_soc_update_bits(codec,
 			MSM89XX_PMIC_ANALOG_MICB_1_CTL, 0x02, 0x02);
+#endif
 		/*
 		 * Add delay of 10 ms to give sufficient time for the voltage
 		 * to shoot up and settle so that the txfe init does not
@@ -2374,6 +2397,21 @@ static bool msm_anlg_cdc_use_mb(struct snd_soc_codec *codec)
 		return false;
 }
 
+#ifdef CONFIG_MACH_LGE
+static void remove_detach_mic_noise(struct snd_soc_codec *codec)
+{
+    int tx2_enabled = 0;
+
+    dev_dbg(codec->dev, "%s()\n", __func__);
+
+    tx2_enabled =  snd_soc_read(codec,MSM89XX_PMIC_ANALOG_TX_2_EN) & 0x80;
+    if(tx2_enabled){
+        dev_info(codec->dev, "%s()-tx2 muted\n", __func__);
+	    snd_soc_write(codec, MSM89XX_CDC_CORE_TX1_VOL_CTL_GAIN,0xac);
+    }
+}
+#endif
+
 static void msm_anlg_cdc_set_auto_zeroing(struct snd_soc_codec *codec,
 					  bool enable)
 {
@@ -2497,6 +2535,12 @@ static int msm_anlg_cdc_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 				snd_soc_update_bits(codec,
 					MSM89XX_PMIC_ANALOG_TX_1_2_ATEST_CTL_2,
 					0x02, 0x02);
+#ifdef CONFIG_MACH_LGE
+			if(atest_diff_mode)
+				snd_soc_update_bits(codec,
+					MSM89XX_PMIC_ANALOG_TX_1_2_ATEST_CTL_2,
+					0x01, 0x01);
+#endif
 			snd_soc_update_bits(codec, micb_int_reg, 0x80, 0x80);
 		} else if (strnstr(w->name, internal2_text, strlen(w->name))) {
 			snd_soc_update_bits(codec, micb_int_reg, 0x10, 0x10);
@@ -3300,6 +3344,12 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 			__func__);
 		snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_RX_EAR_CTL,
 			    0x80, 0x80);
+#ifdef CONFIG_MACH_LGE
+		if( sdm660_cdc->sar != NULL ) {
+			pr_info("%s : enable SAR backoff\n", __func__);
+			extcon_set_state_sync(sdm660_cdc->sar, EXTCON_MECHANICAL, true);
+		}
+#endif		
 		if (get_codec_version(sdm660_cdc) < CONGA)
 			snd_soc_update_bits(codec,
 			MSM89XX_PMIC_ANALOG_RX_HPH_CNP_WG_TIME, 0xFF, 0x2A);
@@ -3324,6 +3374,12 @@ static int msm_anlg_cdc_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 				       DIG_CDC_EVENT_RX1_MUTE_OFF);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+#ifdef CONFIG_MACH_LGE
+		if( sdm660_cdc->sar != NULL ) {
+			pr_info("%s : disable SAR backoff\n", __func__);
+			extcon_set_state_sync(sdm660_cdc->sar, EXTCON_MECHANICAL, false);
+		}
+#endif		
 		msm_anlg_cdc_dig_notifier_call(codec,
 				       DIG_CDC_EVENT_RX1_MUTE_ON);
 		/* Wait for 20ms for RX digital mute to take effect */
@@ -3570,6 +3626,9 @@ static const struct sdm660_cdc_reg_mask_val cajon_wcd_reg_defaults[] = {
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_SPKR_DAC_CTL, 0x03),
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_RX_HPH_BIAS_PA, 0xFA),
 	MSM89XX_REG_VAL(MSM89XX_PMIC_DIGITAL_CDC_RST_CTL, 0x80),
+#ifdef CONFIG_MACH_LGE
+	MSM89XX_REG_VAL(MSM89XX_PMIC_DIGITAL_CDC_RX_DELAY_CTL, 0x99),
+#endif
 };
 
 static const struct sdm660_cdc_reg_mask_val cajon2p0_wcd_reg_defaults[] = {
@@ -3588,8 +3647,15 @@ static const struct sdm660_cdc_reg_mask_val cajon2p0_wcd_reg_defaults[] = {
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_SPKR_DAC_CTL, 0x03),
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_RX_EAR_STATUS, 0x10),
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_BYPASS_MODE, 0x18),
+#ifdef CONFIG_LGE_HPH_PA_BIAS_CURR_I_7_5UA
+	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_RX_HPH_BIAS_PA, 0xFF),
+#else
 	MSM89XX_REG_VAL(MSM89XX_PMIC_ANALOG_RX_HPH_BIAS_PA, 0xFA),
+#endif
 	MSM89XX_REG_VAL(MSM89XX_PMIC_DIGITAL_CDC_RST_CTL, 0x80),
+#ifdef CONFIG_MACH_LGE
+	MSM89XX_REG_VAL(MSM89XX_PMIC_DIGITAL_CDC_RX_DELAY_CTL, 0x99),
+#endif
 };
 
 static void msm_anlg_cdc_update_reg_defaults(struct snd_soc_codec *codec)
@@ -3962,8 +4028,13 @@ static void msm_anlg_cdc_configure_cap(struct snd_soc_codec *codec,
 		snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MICB_1_EN,
 				0x40, (cap_mode->micbias1_cap_mode << 6));
 	} else {
+#ifdef CONFIG_MACH_LGE
+		snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MICB_1_EN,
+				0x40, 0x40);
+#else
 		snd_soc_update_bits(codec, MSM89XX_PMIC_ANALOG_MICB_1_EN,
 				0x40, 0x00);
+#endif
 	}
 }
 
@@ -4193,7 +4264,32 @@ static int msm_anlg_cdc_soc_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_ignore_suspend(dapm, "PDM Capture");
 
 	snd_soc_dapm_sync(dapm);
+#ifdef CONFIG_MACH_LGE
+	sdm660_cdc->sar = devm_extcon_dev_allocate(codec->dev, extcon_sar_backoff);
+	if (IS_ERR(sdm660_cdc->sar)) {
+		dev_err(codec->dev, "failed to allocate extcon device\n");
+		return -ENOMEM;
+	}
+	
+	sdm660_cdc->sar->name = "sar_backoff";
+	ret = devm_extcon_dev_register(codec->dev, sdm660_cdc->sar);
+	if (ret < 0) {
+		dev_err(codec->dev, "extcon_dev_register() failed: %d\n",
+			ret);
+		return ret;
+	}
+	pr_info("%s register sar_backoff extcon device\n",__func__);
 
+	gnd_cfilt = of_property_read_bool(codec->dev->of_node, "lge,cdc-gnd-cfilt");
+	if (gnd_cfilt) {
+		pr_debug("%s: ground cfilter by setting gnd_cfilt = %d\n", __func__, gnd_cfilt);
+	}
+
+	atest_diff_mode = of_property_read_bool(codec->dev->of_node, "lge,atest-diff-mode");
+	if (atest_diff_mode) {
+		pr_debug("%s: handset differential mode by setting atest_diff_mode = %d\n", __func__, atest_diff_mode);
+	}
+#endif  /* CONFIG_MACH_LGE */
 	return 0;
 }
 
@@ -4213,6 +4309,10 @@ static int msm_anlg_cdc_soc_remove(struct snd_soc_codec *codec)
 	atomic_set(&sdm660_cdc_priv->on_demand_list[ON_DEMAND_VDDA18_L10].ref,
 		   0);
 
+#ifdef CONFIG_MACH_LGE
+	if( sdm660_cdc_priv->sar != NULL )
+		devm_extcon_dev_unregister(codec->dev, sdm660_cdc_priv->sar);
+#endif /* CONFIG_MACH_LGE */
 	wcd_mbhc_deinit(&sdm660_cdc_priv->mbhc);
 
 	return 0;

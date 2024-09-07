@@ -322,6 +322,11 @@ struct qpnp_flash_led {
 	u16				base;
 	bool				trigger_lmh;
 	bool				trigger_chgr;
+
+#ifdef CONFIG_MACH_LGE
+	struct device	*dev_fault;
+	u8	last_fault;
+#endif
 };
 
 static int thermal_derate_slow_table[] = {
@@ -344,6 +349,18 @@ static int otst3_threshold_table[] = {
 	125, 119, 113, 107, 149, 143, 137, 131,
 };
 
+#ifdef CONFIG_MACH_LGE
+extern struct class* get_camera_class(void);
+
+static ssize_t show_flash_fault_status(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct qpnp_flash_led *led = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%x\n", led->last_fault);
+}
+static DEVICE_ATTR(fault_status, S_IRUGO, show_flash_fault_status, NULL);
+#endif
 static int max_ires_curr_ma_table[MAX_IRES_LEVELS] = {
 	FLASH_LED_IRES12P5_MAX_CURR_MA, FLASH_LED_IRES10P0_MAX_CURR_MA,
 	FLASH_LED_IRES7P5_MAX_CURR_MA, FLASH_LED_IRES5P0_MAX_CURR_MA
@@ -1857,6 +1874,10 @@ static irqreturn_t qpnp_flash_led_irq_handler(int irq, void *_led)
 
 		if (led_status2 & FLASH_LED_VPH_DROOP_FAULT_MASK)
 			pr_emerg("led vph_droop fault detected!\n");
+#ifdef CONFIG_MACH_LGE
+		pr_emerg("flash led_status = 0x%x, 0x%x\n", led_status1, led_status2);
+		led->last_fault = led_status1;
+#endif
 	}
 
 	pr_debug("irq handled, irq_type=%x, irq_status=%x\n", irq_type,
@@ -2821,6 +2842,16 @@ static int qpnp_flash_led_probe(struct platform_device *pdev)
 	spin_lock_init(&led->lock);
 
 	dev_set_drvdata(&pdev->dev, led);
+
+#ifdef CONFIG_MACH_LGE
+		led->last_fault = 0;
+		led->dev_fault = device_create(get_camera_class(), &led->pdev->dev,
+			0, led, "flash_fault_status");
+		rc = sysfs_create_file(&led->dev_fault->kobj,
+				&dev_attr_fault_status.attr);
+		if (rc)
+			pr_err("error creating flash_fault_status\n");
+#endif
 
 	return 0;
 

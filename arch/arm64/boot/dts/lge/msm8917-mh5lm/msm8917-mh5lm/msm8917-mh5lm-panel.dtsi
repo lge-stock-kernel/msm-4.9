@@ -1,0 +1,46 @@
+/*
+ * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8917-mh5lm_common/msm8917-mh5lm_common-panel.dtsi"
+
+#include "../../../qcom/msm8937-mdss-panels.dtsi"
+
+&mdss_mdp {
+    qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dsi {
+    hw-config = "single_dsi";
+};
+
+
+&dsi_txd_ili9881c_720p_vid {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	lge,panel-type = "TXD-ILI9881C";
+	lge,panel-id = <0>;
+};
+
+&dsi_gx_jd9365z_720p_vid {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	lge,panel-type = "GX-JD9365Z";
+	lge,panel-id = <1>;
+};
+
+&mdss_dsi0 {
+    qcom,dsi-pref-prim-pan = <&dsi_txd_ili9881c_720p_vid>;
+    pinctrl-names = "mdss_default", "mdss_sleep";
+    pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
+    pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
+    qcom,platform-reset-gpio = <&tlmm 33 0>;
+};
+
