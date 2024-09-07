@@ -3164,6 +3164,11 @@ int hdd_wlan_start_modules(struct hdd_context *hdd_ctx, bool reinit)
 	hdd_info("Wlan transitioned (now ENABLED)");
 
 	hdd_ctx->start_modules_in_progress = false;
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+	wlan_hdd_set_scan_suppress(0);
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+#endif
 
 	mutex_unlock(&hdd_ctx->iface_change_lock);
 
@@ -4087,6 +4092,9 @@ static QDF_STATUS hdd_register_interface(struct hdd_adapter *adapter, bool rtnl_
 	int ret;
 
 	hdd_enter();
+// [LGE_CHANGE_S] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
+    hdd_err("hdd_register_interface():Enter(), interface type = %d\n", adapter->wdev.iftype);
+// [LGE_CHANGE_E] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
 
 	if (rtnl_held) {
 		if (strnchr(dev->name, IFNAMSIZ - 1, '%')) {
@@ -10345,6 +10353,7 @@ static int hdd_update_cds_config(struct hdd_context *hdd_ctx)
 
 	cds_cfg->enable_peer_unmap_conf_support =
 		hdd_ctx->config->enable_peer_unmap_conf_support;
+	cds_cfg->bmiss_skip_full_scan = hdd_ctx->config->bmiss_skip_full_scan;
 
 	hdd_ra_populate_cds_config(cds_cfg, hdd_ctx);
 	cds_cfg->enable_tx_compl_tsf64 =
@@ -13618,7 +13627,9 @@ static ssize_t wlan_boot_cb(struct kobject *kobj,
 			    const char *buf,
 			    size_t count)
 {
-
+// [LGE_CHANGE_S] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
+    pr_err("%s: Wi-Fi Initialization is Triggered()\n", __func__);
+// [LGE_CHANGE_E] 2017.06.15, neo-wifi@lge.com, Wi-Fi interface registeration
 	if (wlan_loader->loaded_state) {
 		hdd_fln("wlan driver already initialized");
 		return -EALREADY;
