@@ -522,5 +522,6 @@ config NX30P6093
 	  detected at USBIN.
 
 source "drivers/power/supply/qcom/Kconfig"
+source "drivers/power/supply/lge/Kconfig"
 
 endif # POWER_SUPPLY

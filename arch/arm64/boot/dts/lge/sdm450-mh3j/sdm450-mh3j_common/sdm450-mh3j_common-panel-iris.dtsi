@@ -1,0 +1,19 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_dsi0 {
+	lge,extra-gpio-names = "vddio", "iris-rst", "iris-wakeup";
+	lge,gpio-vddio = <&tlmm 35 0>;
+	lge,gpio-iris-rst = <&tlmm 134 0>;
+	lge,gpio-iris-wakeup = <&tlmm 97 0>;
+};

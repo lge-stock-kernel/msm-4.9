@@ -28,6 +28,10 @@
 #include "mdss_mdp_trace.h"
 #include "mdss_debug.h"
 
+#if defined(CONFIG_LGE_INTERVAL_MONITOR)
+#include "lge/lge_interval_monitor.h"
+#endif
+
 #define MDSS_MDP_QSEED3_VER_DOWNSCALE_LIM 2
 #define NUM_MIXERCFG_REGS 3
 #define MDSS_MDP_WB_OUTPUT_BPP	3
@@ -5430,6 +5434,9 @@ int mdss_mdp_display_wait4comp(struct mdss_mdp_ctl *ctl)
 	if (ctl->ops.wait_fnc)
 		ret = ctl->ops.wait_fnc(ctl, NULL);
 	ATRACE_END("wait_fnc");
+#if defined(CONFIG_LGE_INTERVAL_MONITOR)
+	lge_interval_notify(ktime_get());
+#endif
 
 	trace_mdp_commit(ctl);
 

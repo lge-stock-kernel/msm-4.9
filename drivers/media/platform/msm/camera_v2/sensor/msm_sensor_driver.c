@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  */
 
-#define SENSOR_DRIVER_I2C "camera"
+#define SENSOR_DRIVER_I2C "i2c_camera"
 /* Header file declaration */
 #include "msm_sensor.h"
 #include "msm_sd.h"
@@ -23,8 +23,26 @@
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
-#define SENSOR_MAX_MOUNTANGLE (360)
+#define EEPROM_SLAVE_ADDR 0xA2
+#define VENDOR_ID_ADDR 0x0001
+#define HI1336_QT_VENDOR_ID 0x06
+#define HI1336_HLT_VENDOR_ID 0x55
+#define HI1336_LCE_VENDOR_ID 0x28
+#define HI1336_LITEARRAY_VENDOR_ID 0x0004
 
+#define SENSOR_MAX_MOUNTANGLE (360)
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_MULTI_CAMERA
+static struct class *camera_sensor_id_class = NULL;
+static char* rear_sensor_name=NULL;
+static char* front_sensor_name = NULL;
+static char* rear2_sensor_name = NULL;
+#else
+static struct class *camera_sensor_id_class = NULL;
+static char* rear_sensor_name=NULL;
+static char* front_sensor_name = NULL;
+#endif
+#endif
 static struct v4l2_file_operations msm_sensor_v4l2_subdev_fops;
 static int32_t msm_sensor_driver_platform_probe(struct platform_device *pdev);
 
@@ -727,6 +745,112 @@ static void msm_sensor_fill_sensor_info(struct msm_sensor_ctrl_t *s_ctrl,
 	strlcpy(entity_name, s_ctrl->msm_sd.sd.entity.name, MAX_SENSOR_NAME);
 }
 
+/*LGE_CHANGE_S sensor check by eeprom vendor id fefe7270.park@lge.com*/
+int32_t msm_sensor_eeprom_match_vendor_id(
+	enum msm_camera_i2c_reg_addr_type addr_type, enum msm_camera_i2c_data_type data_type,
+	struct msm_sensor_ctrl_t *s_ctrl, struct msm_camera_sensor_slave_info *slave_info,
+	unsigned short eeprom_slave_addr, unsigned int vendor_id_addr, unsigned int expected_vendor_id)
+{
+	int32_t rc = 0;
+	uint16_t vendor_id = 0;
+
+	s_ctrl->sensor_i2c_client->cci_client->sid = eeprom_slave_addr >> 1;
+	s_ctrl->sensor_i2c_client->addr_type = addr_type;
+
+	s_ctrl->sensor_i2c_client->i2c_func_tbl->i2c_read(
+			s_ctrl->sensor_i2c_client, vendor_id_addr,
+			&vendor_id, data_type);
+
+	s_ctrl->sensor_i2c_client->cci_client->sid = slave_info->slave_addr >> 1;
+	s_ctrl->sensor_i2c_client->addr_type = slave_info->addr_type;
+
+	pr_err("%s: %s eeprom read vendor_id: 0x%x expected_vendor_id 0x%x:\n",
+			__func__, slave_info->sensor_name, vendor_id, expected_vendor_id);
+
+	if(vendor_id != expected_vendor_id)
+		rc = -EINVAL;
+
+	return rc;
+}
+
+int msm_sensor_check_module_id(struct msm_sensor_ctrl_t *s_ctrl,
+	struct msm_camera_sensor_slave_info *slave_info)
+{
+	int32_t rc = 0;
+
+	if(strncmp(slave_info->sensor_name, "hi1336", 6) == 0 && slave_info->slave_addr == 0x46){
+		if (strcmp("hi1336_hlt", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, EEPROM_SLAVE_ADDR, VENDOR_ID_ADDR, HI1336_HLT_VENDOR_ID);
+		} else if(strcmp("hi1336", slave_info->sensor_name) == 0){
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, EEPROM_SLAVE_ADDR, VENDOR_ID_ADDR, HI1336_QT_VENDOR_ID);
+		}
+	}
+	if(strncmp(slave_info->sensor_name, "hi1336", 6) == 0 && slave_info->slave_addr == 0x40){
+		if (strcmp("hi1336", slave_info->sensor_name) == 0) {
+		pr_err("lce_hi1336\n");
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA0, VENDOR_ID_ADDR, HI1336_LCE_VENDOR_ID);
+		} else if(strcmp("litearray_hi1336", slave_info->sensor_name) == 0){
+				pr_err("litearray_hi1336\n");
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xB0, VENDOR_ID_ADDR,HI1336_LITEARRAY_VENDOR_ID );
+		} else {
+			pr_err("%s is not a listed sensor !!!", slave_info->sensor_name);
+			rc = -EINVAL;
+	        }
+	}
+	if(strncmp(slave_info->sensor_name, "sl556", 5) == 0 && slave_info->slave_addr == 0x50){
+		if(strcmp("sl556_cowell", slave_info->sensor_name) == 0){
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_BYTE_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA0, 0x00, 0x11);
+		} else if (strcmp("sl556_lgit", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_BYTE_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA0, 0x00, 0x01);
+		} else if (strcmp("sl556_sunny", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA0, 0x0700, 0x20);
+		} else if (strcmp("sl556_byd", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA8, 0x0000, 0x42);
+		} else {
+			pr_err("%s is not a listed sensor !!!", slave_info->sensor_name);
+			rc = -EINVAL;
+		}
+	}
+#if 0
+	 else if(strncmp(slave_info->sensor_name, "sl846", 5) == 0 && slave_info->slave_addr == 0x40){
+	        if(strcmp("sl846_cowell", slave_info->sensor_name) == 0){
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xB0, 0x0700, 0x13);
+	        } else if (strcmp("sl846_lgit", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xB0, 0x0700, 0x01);
+	        } else {
+			pr_err("%s is not a listed sensor !!!", slave_info->sensor_name);
+			rc = -EINVAL;
+	        }
+	} else if(strncmp(slave_info->sensor_name, "s5k3p8", 6) == 0 && slave_info->slave_addr == 0x20){
+	        if(strcmp("s5k3p8_lgit", slave_info->sensor_name) == 0){
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xB0, 0x0700, 0x01);
+	        } else if (strcmp("s5k3p8_sunny", slave_info->sensor_name) == 0) {
+			rc = msm_sensor_eeprom_match_vendor_id(MSM_CAMERA_I2C_WORD_ADDR, MSM_CAMERA_I2C_BYTE_DATA,
+				s_ctrl, slave_info, 0xA2, 0x0700, 0x20);
+	        } else {
+			pr_err("%s is not a listed sensor !!!", slave_info->sensor_name);
+			rc = -EINVAL;
+	        }
+	}
+#endif
+	if (rc < 0)
+		pr_err("%s:%d match id failed rc %d\n", __func__, __LINE__, rc);
+
+	return rc;
+}
+/*LGE_CHANGE_E sensor check by eeprom vendor id fefe7270.park@lge.com*/
+
 /* static function definition */
 static int32_t msm_sensor_driver_is_special_support(
 	struct msm_sensor_ctrl_t *s_ctrl,
@@ -955,6 +1079,18 @@ int32_t msm_sensor_driver_probe(void *setting,
 		slave_info->sensor_init_params.sensor_mount_angle);
 	CDBG("bypass video node creation %d",
 		slave_info->bypass_video_node_creation);
+
+#ifdef CONFIG_MACH_LGE
+	if(slave_info->camera_id == 0) {
+		rear_sensor_name = slave_info->sensor_name;
+	} else if (slave_info->camera_id == 1) {
+		front_sensor_name = slave_info->sensor_name;
+#ifdef CONFIG_MULTI_CAMERA
+    } else if (slave_info->camera_id == 2) {
+		rear2_sensor_name = slave_info->sensor_name;
+#endif
+    }
+#endif
 	/* Validate camera id */
 	if (slave_info->camera_id >= MAX_CAMERAS) {
 		pr_err("failed: invalid camera id %d max %d",
@@ -1135,6 +1271,15 @@ CSID_TG:
 		pr_err("%s power up failed", slave_info->sensor_name);
 		goto free_camera_info;
 	}
+
+    /*LGE_CHANGE_S sensor check by eeprom vendor id fefe7270.park@lge.com*/
+	rc = msm_sensor_check_module_id(s_ctrl, slave_info);
+	if (rc < 0) {
+		pr_err("%s module id matching failed", slave_info->sensor_name);
+		s_ctrl->func_tbl->sensor_power_down(s_ctrl);
+		goto free_camera_info;
+	}
+	/*LGE_CHANGE_E sensor check by eeprom vendor id fefe7270.park@lge.com*/
 
 	pr_err("%s probe succeeded", slave_info->sensor_name);
 
@@ -1540,6 +1685,26 @@ static int msm_sensor_driver_i2c_remove(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_MACH_LGE
+#ifdef CONFIG_MULTI_CAMERA
+static ssize_t show_LGCameraSensorName(struct device *dev,struct device_attribute *attr, char *buf)
+{
+	pr_err("show_LGCameraSensorName: rear_camera_name [%s] , front_camera_name [%s], rear2_camera_name [%s] \n", rear_sensor_name, front_sensor_name, rear2_sensor_name);
+	return sprintf(buf, "FCam:%s^^RCam:%s^^RCam1:%s\n", front_sensor_name, rear_sensor_name, rear2_sensor_name);
+}
+
+static DEVICE_ATTR(sensor_name, S_IRUGO, show_LGCameraSensorName, NULL);
+#else
+static ssize_t show_LGCameraSensorName(struct device *dev,struct device_attribute *attr, char *buf)
+{
+	pr_err("show_LGCameraSensorName: rear_camera_name [%s] , front_camera_name [%s]\n", rear_sensor_name, front_sensor_name);
+	return sprintf(buf, "FCam:%s^^RCam:%s\n", front_sensor_name, rear_sensor_name);
+}
+
+static DEVICE_ATTR(sensor_name, S_IRUGO, show_LGCameraSensorName, NULL);
+#endif
+#endif
+
 static const struct i2c_device_id i2c_id[] = {
 	{SENSOR_DRIVER_I2C, (kernel_ulong_t)NULL},
 	{ }
@@ -1557,7 +1722,9 @@ static struct i2c_driver msm_sensor_driver_i2c = {
 static int __init msm_sensor_driver_init(void)
 {
 	int32_t rc = 0;
-
+#ifdef CONFIG_MACH_LGE
+	struct device*	camera_sensor_name_dev;
+#endif
 	CDBG("%s Enter\n", __func__);
 	rc = platform_driver_register(&msm_sensor_platform_driver);
 	if (rc)
@@ -1567,6 +1734,17 @@ static int __init msm_sensor_driver_init(void)
 	if (rc)
 		pr_err("%s i2c_add_driver failed rc = %d",  __func__, rc);
 
+#ifdef CONFIG_MACH_LGE
+	if(!rc)
+	{
+		CDBG(" %s : register sensor_name class  ",__func__);
+		camera_sensor_id_class = class_create(THIS_MODULE, "camsensor");
+		camera_sensor_name_dev = device_create(camera_sensor_id_class, NULL,
+		0, NULL, "sensor_name");
+		device_create_file(camera_sensor_name_dev, &dev_attr_sensor_name);
+	}
+#endif
+
 	return rc;
 }
 
@@ -1575,6 +1753,9 @@ static void __exit msm_sensor_driver_exit(void)
 	CDBG("Enter");
 	platform_driver_unregister(&msm_sensor_platform_driver);
 	i2c_del_driver(&msm_sensor_driver_i2c);
+#ifdef CONFIG_MACH_LGE
+	class_destroy(camera_sensor_id_class);
+#endif
 }
 
 module_init(msm_sensor_driver_init);

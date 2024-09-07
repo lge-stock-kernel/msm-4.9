@@ -209,6 +209,9 @@ enum qg_wa_flags {
 	QG_VBAT_LOW_WA = BIT(0),
 	QG_RECHARGE_SOC_WA = BIT(1),
 };
-
-
+#ifdef CONFIG_LGE_PM
+int extension_qg_load_dt(void);
+int extension_qg_load_icoeff_dt(struct qpnp_qg *qg);
+int lge_get_ui_soc(struct qpnp_qg *qg, int msoc_raw);
+#endif
 #endif /* __QG_CORE_H__ */

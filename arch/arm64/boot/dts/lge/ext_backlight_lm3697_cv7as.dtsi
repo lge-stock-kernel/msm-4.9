@@ -1,0 +1,18 @@
+&i2c_2 {
+	ext_bl@36 {
+		status = "ok";
+		compatible = "ext_bl";
+		reg = <0x36>;
+		ext_bl,lcd_bl_en = <&tlmm 8 0>;
+		ext_bl,max_brightness = <2047>;
+		ext_bl,min_brightness = <0x01>;
+		ext_bl,default_brightness = <570>;
+
+		ext_bl,control_bank = <0x04>;	//0x10
+		ext_bl,bl_config = <0x01>;	//0x16
+		ext_bl,max_current = <0x13>;	//0x17
+		ext_bl,cur_sink_feedback = <0x03>;	//0x19
+		ext_bl,boost_control = <0x04>;	//0x1A
+		ext_bl,enable_cabc = <1>;	//0x1C
+	};
+};

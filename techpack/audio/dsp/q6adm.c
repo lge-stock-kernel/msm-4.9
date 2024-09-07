@@ -27,6 +27,9 @@
 #include <ipc/apr.h>
 #include "adsp_err.h"
 
+#if defined(CONFIG_SND_LGE_CROSSTALK)
+#include "lge_dsp_crosstalk.h"
+#endif
 #define TIMEOUT_MS 1000
 
 #define RESET_COPP_ID 99
@@ -48,6 +51,10 @@
 #define DS2_ADM_COPP_TOPOLOGY_ID 0xFFFFFFFF
 #endif
 
+#ifdef CONFIG_SND_LGE_NXP_LVVE
+#define VPM_TX_SM_LVVEFQ    (0x1000BFF0) //LVVE
+#define VPM_TX_DM_LVVEFQ    (0x1000BFF1) //LVVE
+#endif // CONFIG_SND_LGE_NXP_LVVE
 /* ENUM for adm_status */
 enum adm_cal_status {
 	ADM_STATUS_CALIBRATION_REQUIRED = 0,
@@ -2648,7 +2655,12 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 	if ((topology == VPM_TX_SM_ECNS_V2_COPP_TOPOLOGY) ||
 	    (topology == VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
 	    (topology == VPM_TX_DM_FLUENCE_COPP_TOPOLOGY) ||
-	    (topology == VPM_TX_DM_RFECNS_COPP_TOPOLOGY))
+	    (topology == VPM_TX_DM_RFECNS_COPP_TOPOLOGY)
+#ifdef CONFIG_SND_LGE_NXP_LVVE
+		|| (topology == VPM_TX_SM_LVVEFQ)
+		|| (topology == VPM_TX_DM_LVVEFQ)
+#endif
+	)
 		rate = 16000;
 
 	/*
@@ -5267,6 +5279,97 @@ done:
 	return ret;
 }
 EXPORT_SYMBOL(adm_get_source_tracking);
+
+#if defined (CONFIG_SND_LGE_CROSSTALK)
+int q6adm_set_crosstalk_parms(int port_id, int copp_idx, int mode)
+{
+	struct adm_crosstalk_param crosstalk_cfg;
+	int port_idx;
+	int ret  = 0;
+
+	pr_debug("%s: Enter, port_id %d, copp_idx %d\n",
+		  __func__, port_id, copp_idx);
+	port_id = q6audio_convert_virtual_to_portid(port_id);
+	port_idx = adm_validate_and_get_port_index(port_id);
+	if (port_idx < 0 || port_idx >= AFE_MAX_PORTS) {
+		pr_err("%s: Invalid port_id %#x\n", __func__, port_id);
+		ret = -EINVAL;
+		goto done;
+	}
+
+	if (copp_idx < 0 || copp_idx >= MAX_COPPS_PER_PORT) {
+		pr_err("%s: Invalid copp_num: %d\n", __func__, copp_idx);
+		ret = -EINVAL;
+		goto done;
+	}
+
+	memset(&crosstalk_cfg, 0, sizeof(crosstalk_cfg));
+	crosstalk_cfg.params.hdr.hdr_field =
+				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	crosstalk_cfg.params.hdr.pkt_size =
+				sizeof(crosstalk_cfg);
+	crosstalk_cfg.params.hdr.src_svc = APR_SVC_ADM;
+	crosstalk_cfg.params.hdr.src_domain = APR_DOMAIN_APPS;
+	crosstalk_cfg.params.hdr.src_port = port_id;
+	crosstalk_cfg.params.hdr.dest_svc = APR_SVC_ADM;
+	crosstalk_cfg.params.hdr.dest_domain = APR_DOMAIN_ADSP;
+	crosstalk_cfg.params.hdr.dest_port =
+			atomic_read(&this_adm.copp.id[port_idx][copp_idx]);
+	crosstalk_cfg.params.hdr.token = port_idx << 16 | copp_idx;
+	crosstalk_cfg.params.hdr.opcode = ADM_CMD_SET_PP_PARAMS_V5;
+	crosstalk_cfg.params.payload_addr_lsw = 0;
+	crosstalk_cfg.params.payload_addr_msw = 0;
+	crosstalk_cfg.params.mem_map_handle = 0;
+	crosstalk_cfg.params.payload_size = sizeof(crosstalk_cfg) -
+				sizeof(crosstalk_cfg.params);
+	crosstalk_cfg.data.module_id = LGE_CROSSTALK_ANC;
+	crosstalk_cfg.data.param_id = LGE_CROSSTALK_ANC_HEADSET_MODE;
+	crosstalk_cfg.data.param_size = crosstalk_cfg.params.payload_size -
+				sizeof(crosstalk_cfg.data);
+	crosstalk_cfg.data.reserved = 0;
+	crosstalk_cfg.crosstalk_enable_mode = mode;
+
+	atomic_set(&this_adm.copp.stat[port_idx][copp_idx], -1);
+
+	ret = apr_send_pkt(this_adm.apr, (uint32_t *)&crosstalk_cfg);
+	if (ret < 0) {
+		pr_err("%s: port_id: for[0x%x] failed %d\n",
+		__func__, port_id, ret);
+		goto done;
+	}
+	/* Wait for the callback with copp id */
+	ret = wait_event_timeout(this_adm.copp.wait[port_idx][copp_idx],
+		atomic_read(&this_adm.copp.stat
+		[port_idx][copp_idx]) >= 0,
+		msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: crosstalk_cfg Set params timed out for port_id: for [0x%x]\n",
+					__func__, port_id);
+		ret = -ETIMEDOUT;
+		goto done;
+	}
+
+	if (atomic_read(&this_adm.copp.stat[port_idx][copp_idx]) > 0) {
+		pr_err("%s: DSP returned error[%s]\n",
+			__func__, adsp_err_get_err_str(
+			atomic_read(&this_adm.copp.stat
+			[port_idx][copp_idx])));
+		ret = adsp_err_get_lnx_err_code(
+			atomic_read(&this_adm.copp.stat
+				[port_idx][copp_idx]));
+		goto done;
+	}
+
+	pr_debug("%s: crosstalk_cfg Set params returned success", __func__);
+	ret = 0;
+
+done:
+	return ret;
+}
+EXPORT_SYMBOL(q6adm_set_crosstalk_parms);
+
+#endif
 
 int __init adm_init(void)
 {

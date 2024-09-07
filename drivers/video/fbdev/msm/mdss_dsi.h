@@ -99,6 +99,9 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
+#if defined(CONFIG_LGE_DISPLAY_COMMON)
+	BL_OTHERS,
+#endif
 	UNKNOWN_CTRL,
 };
 
@@ -397,6 +400,10 @@ struct dsi_err_container {
 #define MDSS_DSI_COMMAND_COMPRESSION_MODE_CTRL3	0x02b0
 #define MSM_DBA_CHIP_NAME_MAX_LEN				20
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+#include "lge/lge_mdss_dsi.h"
+#endif
+
 struct mdss_dsi_ctrl_pdata {
 	int ndx;	/* panel_num */
 	int (*on)(struct mdss_panel_data *pdata);
@@ -561,9 +568,23 @@ struct mdss_dsi_ctrl_pdata {
 	bool ds_registered;
 
 	bool timing_db_mode;
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	struct lge_mdss_dsi_ctrl_pdata lge_extra;
+#endif
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_DEBUG)
+	int debug_pwr_seq_dly[10];
+	int debug_pwr_always_on[10];
+	int debug_cabc_mode;
+#endif
 	bool update_phy_timing; /* flag to recalculate PHY timings */
 
 	bool phy_power_off;
+#if defined(CONFIG_PXLW_IRIS3)
+	int abyp_gpio;
+	int iris_rst_gpio;
+	bool interleave_op_contention;
+	bool bta_error;
+#endif
 };
 
 struct dsi_status_data {

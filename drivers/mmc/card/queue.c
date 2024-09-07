@@ -25,6 +25,9 @@
 
 #include "queue.h"
 #include "block.h"
+#if defined(CONFIG_LGE_MMC_DYNAMIC_LOG)
+#include <linux/mmc/debug_log.h>
+#endif
 
 #define MMC_QUEUE_BOUNCESZ	65536
 

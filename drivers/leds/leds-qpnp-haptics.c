@@ -771,6 +771,13 @@ static int qpnp_haptics_play(struct hap_chip *chip, bool enable)
 				ktime_set(0, AUTO_RES_ERR_POLL_TIME_NS),
 				HRTIMER_MODE_REL);
 	} else {
+#ifdef CONFIG_MACH_LGE //Disable Power
+		rc = qpnp_haptics_mod_enable(chip, false);
+		if (rc < 0) {
+			pr_err("Error in disabling module, rc=%d\n", rc);
+			goto out;
+		}
+#endif
 		rc = qpnp_haptics_play_control(chip, HAP_STOP);
 		if (rc < 0) {
 			pr_err("Error in disabling play, rc=%d\n", rc);
@@ -1482,7 +1489,11 @@ static ssize_t qpnp_haptics_store_duration(struct device *dev,
 		return count;
 
 	if (val > chip->max_play_time_ms)
+#ifdef CONFIG_MACH_LGE
+		val = chip->max_play_time_ms;
+#else
 		return -EINVAL;
+#endif
 
 	mutex_lock(&chip->param_lock);
 	rc = qpnp_haptics_auto_mode_config(chip, val);

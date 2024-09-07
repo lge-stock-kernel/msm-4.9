@@ -134,17 +134,19 @@
 #define SDAM_PAUSE_END_MASK			GENMASK(3, 0)
 
 #define SDAM_LUT_COUNT_MAX			64
-
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 enum lpg_src {
 	LUT_PATTERN = 0,
 	PWM_VALUE,
 };
+#endif
 
 static const int pwm_size[NUM_PWM_SIZE] = {6, 9};
 static const int clk_freq_hz[NUM_PWM_CLK] = {1024, 32768, 19200000};
 static const int clk_prediv[NUM_CLK_PREDIV] = {1, 3, 5, 6};
 static const int pwm_exponent[NUM_PWM_EXP] = {0, 1, 2, 3, 4, 5, 6, 7};
 
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 struct lpg_ramp_config {
 	u16			step_ms;
 	u8			pause_hi_count;
@@ -164,7 +166,7 @@ struct lpg_pwm_config {
 	u32	prediv;
 	u32	clk_exp;
 	u16	pwm_value;
-	u32	best_period_ns;
+	u64	best_period_ns;
 };
 
 struct qpnp_lpg_lut {
@@ -185,8 +187,8 @@ struct qpnp_lpg_channel {
 	u8				src_sel;
 	u8				subtype;
 	bool				lut_written;
-	int				current_period_ns;
-	int				current_duty_ns;
+	u64				current_period_ns;
+	u64				current_duty_ns;
 };
 
 struct qpnp_lpg_chip {
@@ -202,6 +204,28 @@ struct qpnp_lpg_chip {
 	unsigned long		pbs_en_bitmap;
 	bool			use_sdam;
 };
+#endif
+
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+static void qpnp_lpg_pwm_disable(struct pwm_chip *pwm_chip,
+		struct pwm_device *pwm);
+
+struct qpnp_lpg_channel *qpnp_get_lpg_channel(struct pwm_chip *pwm_chip,
+		                                struct pwm_device *pwm)
+{
+	struct qpnp_lpg_chip *chip = container_of(pwm_chip,
+			struct qpnp_lpg_chip, pwm_chip);
+	u32 hw_idx = pwm->hwpwm;
+
+	if (hw_idx >= chip->num_lpgs) {
+		dev_err(chip->dev, "hw index %d out of range [0-%d]\n",
+				hw_idx, chip->num_lpgs - 1);
+		return NULL;
+	}
+
+	return &chip->lpgs[hw_idx];
+}
+#endif
 
 static int qpnp_lpg_read(struct qpnp_lpg_channel *lpg, u16 addr, u8 *val)
 {
@@ -484,6 +508,38 @@ static int qpnp_lpg_set_pwm_config(struct qpnp_lpg_channel *lpg)
 	return rc;
 }
 
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+void qpnp_init_lut_pattern(struct qpnp_lpg_channel *lpg)
+{
+	int i, rc = 0;
+	u8 lsb, msb, addr;
+	u16 pwm_values[LPG_LUT_COUNT_MAX + 1] = {0};
+	struct qpnp_lpg_lut *lut = lpg->chip->lut;
+        
+        mutex_lock(&lut->lock);
+	addr = REG_LPG_LUT_1_LSB;
+	for (i = 0; i <= LPG_LUT_COUNT_MAX; i++) {
+		pwm_values[i] = 0;
+
+		lsb = pwm_values[i] & 0xff;
+		msb = pwm_values[i] >> 8;
+		rc = qpnp_lut_write(lut, addr++, lsb);
+		if (rc < 0) {
+			dev_err(lpg->chip->dev, "Write NO.%d LUT pattern LSB (%d) failed, rc=%d",
+					i, lsb, rc);
+		}
+
+		rc = qpnp_lut_masked_write(lut, addr++,
+				LPG_LUT_VALUE_MSB_MASK, msb);
+		if (rc < 0) {
+			dev_err(lpg->chip->dev, "Write NO.%d LUT pattern MSB (%d) failed, rc=%d",
+					i, msb, rc);
+		}
+	}
+        mutex_unlock(&lut->lock);
+}
+#endif
+
 static int qpnp_lpg_set_sdam_lut_pattern(struct qpnp_lpg_channel *lpg,
 		unsigned int *pattern, unsigned int length)
 {
@@ -501,8 +557,11 @@ static int qpnp_lpg_set_sdam_lut_pattern(struct qpnp_lpg_channel *lpg,
 	mutex_lock(&lut->lock);
 	addr = lpg->ramp_config.lo_idx;
 	for (i = 0; i < length; i++)
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+		val[i] = pattern[i];
+#else
 		val[i] = pattern[i] * 255 / 100;
-
+#endif
 	rc = qpnp_lut_sdam_write(lut, addr, val, length);
 	if (rc < 0) {
 		dev_err(lpg->chip->dev, "Write pattern in SDAM failed, rc=%d",
@@ -600,7 +659,11 @@ static int qpnp_lpg_set_lut_pattern(struct qpnp_lpg_channel *lpg,
 	addr = REG_LPG_LUT_1_LSB + lpg->ramp_config.lo_idx * 2;
 	for (i = 0; i < length; i++) {
 		full_duty_value = 1 << lpg->pwm_config.pwm_size;
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+		pwm_values[i] = pattern[i] * full_duty_value / 255;
+#else
 		pwm_values[i] = pattern[i] * full_duty_value / 100;
+#endif
 
 		if (unlikely(pwm_values[i] > full_duty_value)) {
 			dev_err(lpg->chip->dev, "PWM value %d exceed the max %d\n",
@@ -713,6 +776,12 @@ static int qpnp_lpg_set_ramp_config(struct qpnp_lpg_channel *lpg)
 	if (ramp->toggle)
 		val |= LPG_PATTERN_RAMP_TOGGLE;
 
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	pr_err("%s: val=%d, step_ms=%d, hi_idx=%d, lo_idx=%d, pause_hi_cnt=%d, pause_lo_cnt=%d\n",
+			__func__, val,
+			ramp->step_ms, ramp->hi_idx, ramp->lo_idx,  ramp->pause_hi_count, ramp->pause_lo_count);
+#endif
+
 	rc = qpnp_lpg_masked_write(lpg, addr, mask, val);
 	if (rc < 0) {
 		dev_err(lpg->chip->dev, "Write LPG_PATTERN_CONFIG failed, rc=%d\n",
@@ -723,17 +792,17 @@ static int qpnp_lpg_set_ramp_config(struct qpnp_lpg_channel *lpg)
 	return rc;
 }
 
-static void __qpnp_lpg_calc_pwm_period(int period_ns,
+static void __qpnp_lpg_calc_pwm_period(u64 period_ns,
 			struct lpg_pwm_config *pwm_config)
 {
 	struct qpnp_lpg_channel *lpg = container_of(pwm_config,
 			struct qpnp_lpg_channel, pwm_config);
 	struct lpg_pwm_config configs[NUM_PWM_SIZE];
 	int i, j, m, n;
-	int tmp1, tmp2;
-	int clk_period_ns = 0, pwm_clk_period_ns;
-	int clk_delta_ns = INT_MAX, min_clk_delta_ns = INT_MAX;
-	int pwm_period_delta = INT_MAX, min_pwm_period_delta = INT_MAX;
+	u64 tmp1, tmp2;
+	u64 clk_period_ns = 0, pwm_clk_period_ns;
+	u64 clk_delta_ns = U64_MAX, min_clk_delta_ns = U64_MAX;
+	u64 pwm_period_delta = U64_MAX, min_pwm_period_delta = U64_MAX;
 	int pwm_size_step;
 
 	/*
@@ -755,7 +824,8 @@ static void __qpnp_lpg_calc_pwm_period(int period_ns,
 				for (m = 0; m < ARRAY_SIZE(pwm_exponent); m++) {
 					tmp1 = 1 << pwm_exponent[m];
 					tmp1 *= clk_prediv[j];
-					tmp2 = NSEC_PER_SEC / clk_freq_hz[i];
+					tmp2 = NSEC_PER_SEC;
+					do_div(tmp2, clk_freq_hz[i]);
 
 					clk_period_ns = tmp1 * tmp2;
 
@@ -785,10 +855,7 @@ static void __qpnp_lpg_calc_pwm_period(int period_ns,
 
 		configs[n].best_period_ns *= 1 << pwm_size[n];
 		/* Find the closest setting for PWM period */
-		if (min_clk_delta_ns < INT_MAX >> pwm_size[n])
-			pwm_period_delta = min_clk_delta_ns << pwm_size[n];
-		else
-			pwm_period_delta = INT_MAX;
+		pwm_period_delta = min_clk_delta_ns << pwm_size[n];
 		if (pwm_period_delta < min_pwm_period_delta) {
 			min_pwm_period_delta = pwm_period_delta;
 			memcpy(pwm_config, &configs[n],
@@ -806,21 +873,20 @@ static void __qpnp_lpg_calc_pwm_period(int period_ns,
 			pwm_config->clk_exp -= pwm_size_step;
 		}
 	}
-	pr_debug("PWM setting for period_ns %d: pwm_clk = %dHZ, prediv = %d, exponent = %d, pwm_size = %d\n",
+	pr_debug("PWM setting for period_ns %llu: pwm_clk = %dHZ, prediv = %d, exponent = %d, pwm_size = %d\n",
 			period_ns, pwm_config->pwm_clk, pwm_config->prediv,
 			pwm_config->clk_exp, pwm_config->pwm_size);
-	pr_debug("Actual period: %dns\n", pwm_config->best_period_ns);
+	pr_debug("Actual period: %lluns\n", pwm_config->best_period_ns);
 }
 
-static void __qpnp_lpg_calc_pwm_duty(int period_ns, int duty_ns,
+static void __qpnp_lpg_calc_pwm_duty(u64 period_ns, u64 duty_ns,
 			struct lpg_pwm_config *pwm_config)
 {
 	u16 pwm_value, max_pwm_value;
+	u64 tmp;
 
-	if ((1 << pwm_config->pwm_size) > (INT_MAX / duty_ns))
-		pwm_value = duty_ns / (period_ns >> pwm_config->pwm_size);
-	else
-		pwm_value = (duty_ns << pwm_config->pwm_size) / period_ns;
+	tmp = (u64)duty_ns << pwm_config->pwm_size;
+	pwm_value = (u16)div64_u64(tmp, period_ns);
 
 	max_pwm_value = (1 << pwm_config->pwm_size) - 1;
 	if (pwm_value > max_pwm_value)
@@ -828,20 +894,13 @@ static void __qpnp_lpg_calc_pwm_duty(int period_ns, int duty_ns,
 	pwm_config->pwm_value = pwm_value;
 }
 
-static int qpnp_lpg_pwm_config(struct pwm_chip *pwm_chip,
-		struct pwm_device *pwm, int duty_ns, int period_ns)
+static int qpnp_lpg_config(struct qpnp_lpg_channel *lpg,
+		u64 duty_ns, u64 period_ns)
 {
-	struct qpnp_lpg_channel *lpg;
-	int rc = 0;
-
-	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
-	if (lpg == NULL) {
-		dev_err(pwm_chip->dev, "lpg not found\n");
-		return -ENODEV;
-	}
+	int rc;
 
 	if (duty_ns > period_ns) {
-		dev_err(pwm_chip->dev, "Duty %dns is larger than period %dns\n",
+		dev_err(lpg->chip->dev, "Duty %lluns is larger than period %lluns\n",
 						duty_ns, period_ns);
 		return -EINVAL;
 	}
@@ -855,7 +914,7 @@ static int qpnp_lpg_pwm_config(struct pwm_chip *pwm_chip,
 					lpg->ramp_config.pattern,
 					lpg->ramp_config.pattern_length);
 			if (rc < 0) {
-				dev_err(pwm_chip->dev, "set LUT pattern failed for LPG%d, rc=%d\n",
+				dev_err(lpg->chip->dev, "set LUT pattern failed for LPG%d, rc=%d\n",
 						lpg->lpg_idx, rc);
 				return rc;
 			}
@@ -869,7 +928,7 @@ static int qpnp_lpg_pwm_config(struct pwm_chip *pwm_chip,
 
 	rc = qpnp_lpg_set_pwm_config(lpg);
 	if (rc < 0) {
-		dev_err(pwm_chip->dev, "Config PWM failed for channel %d, rc=%d\n",
+		dev_err(lpg->chip->dev, "Config PWM failed for channel %d, rc=%d\n",
 						lpg->lpg_idx, rc);
 		return rc;
 	}
@@ -878,6 +937,34 @@ static int qpnp_lpg_pwm_config(struct pwm_chip *pwm_chip,
 	lpg->current_duty_ns = duty_ns;
 
 	return rc;
+}
+
+static int qpnp_lpg_pwm_config(struct pwm_chip *pwm_chip,
+		struct pwm_device *pwm, int duty_ns, int period_ns)
+{
+	struct qpnp_lpg_channel *lpg;
+
+	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
+	if (lpg == NULL) {
+		dev_err(pwm_chip->dev, "lpg not found\n");
+		return -ENODEV;
+	}
+
+	return qpnp_lpg_config(lpg, (u64)duty_ns, (u64)period_ns);
+}
+
+static int qpnp_lpg_pwm_config_extend(struct pwm_chip *pwm_chip,
+		struct pwm_device *pwm, u64 duty_ns, u64 period_ns)
+{
+	struct qpnp_lpg_channel *lpg;
+
+	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
+	if (lpg == NULL) {
+		dev_err(pwm_chip->dev, "lpg not found\n");
+		return -ENODEV;
+	}
+
+	return qpnp_lpg_config(lpg, duty_ns, period_ns);
 }
 
 static int qpnp_lpg_pbs_trigger_enable(struct qpnp_lpg_channel *lpg, bool en)
@@ -983,7 +1070,9 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 	struct qpnp_lpg_channel *lpg;
 	enum lpg_src src_sel;
 	int rc;
+#ifndef CONFIG_LEDS_LGE_EMOTIONAL
 	bool is_enabled;
+#endif
 
 	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
 	if (lpg == NULL) {
@@ -998,6 +1087,11 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 
 	src_sel = (output_type == PWM_OUTPUT_MODULATED) ?
 				LUT_PATTERN : PWM_VALUE;
+
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	if ((src_sel == lpg->src_sel) && (src_sel == PWM_VALUE))
+		return 0;
+#else
 	if (src_sel == lpg->src_sel)
 		return 0;
 
@@ -1017,7 +1111,7 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 			return rc;
 		}
 	}
-
+#endif
 	if (src_sel == LUT_PATTERN) {
 		/* program LUT if it's never been programmed */
 		if (!lpg->lut_written) {
@@ -1042,6 +1136,20 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 
 	lpg->src_sel = src_sel;
 
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+	if ((src_sel == lpg->src_sel) && (src_sel == LUT_PATTERN)) {
+		qpnp_lpg_pwm_disable(pwm_chip, pwm);
+	} else {
+		if (pwm_is_enabled(pwm)) {
+			rc = qpnp_lpg_pwm_src_enable(lpg, true);
+			if (rc < 0) {
+				dev_err(pwm_chip->dev, "Enable PWM output failed for channel %d, rc=%d\n",
+						lpg->lpg_idx, rc);
+				return rc;
+			}
+		}
+	}
+#else
 	if (is_enabled) {
 		rc = qpnp_lpg_set_pwm_config(lpg);
 		if (rc < 0) {
@@ -1057,6 +1165,7 @@ static int qpnp_lpg_pwm_set_output_type(struct pwm_chip *pwm_chip,
 			return rc;
 		}
 	}
+#endif
 
 	return 0;
 }
@@ -1065,8 +1174,9 @@ static int qpnp_lpg_pwm_set_output_pattern(struct pwm_chip *pwm_chip,
 	struct pwm_device *pwm, struct pwm_output_pattern *output_pattern)
 {
 	struct qpnp_lpg_channel *lpg;
-	int rc = 0, i, period_ns, duty_ns;
+	u64 period_ns, duty_ns, tmp;
 	u32 *percentages;
+	int rc = 0, i;
 
 	lpg = pwm_dev_to_qpnp_lpg(pwm_chip, pwm);
 	if (lpg == NULL) {
@@ -1086,19 +1196,17 @@ static int qpnp_lpg_pwm_set_output_pattern(struct pwm_chip *pwm_chip,
 	if (!percentages)
 		return -ENOMEM;
 
-	period_ns = pwm_get_period(pwm);
+	period_ns = pwm_get_period_extend(pwm);
 	for (i = 0; i < output_pattern->num_entries; i++) {
 		duty_ns = output_pattern->duty_pattern[i];
 		if (duty_ns > period_ns) {
-			dev_err(lpg->chip->dev, "duty %dns is larger than period %dns\n",
+			dev_err(lpg->chip->dev, "duty %lluns is larger than period %lluns\n",
 					duty_ns, period_ns);
 			goto err;
 		}
 		/* Translate the pattern in duty_ns to percentage */
-		if ((INT_MAX / duty_ns) < 100)
-			percentages[i] = duty_ns / (period_ns / 100);
-		else
-			percentages[i] = (duty_ns * 100) / period_ns;
+		tmp = (u64)duty_ns * 100;
+		percentages[i] = (u32)div64_u64(tmp, period_ns);
 	}
 
 	rc = qpnp_lpg_set_lut_pattern(lpg, percentages,
@@ -1114,12 +1222,10 @@ static int qpnp_lpg_pwm_set_output_pattern(struct pwm_chip *pwm_chip,
 			output_pattern->num_entries);
 	lpg->ramp_config.hi_idx = lpg->ramp_config.lo_idx +
 				output_pattern->num_entries - 1;
-	if ((INT_MAX / period_ns) > output_pattern->cycles_per_duty)
-		lpg->ramp_config.step_ms = output_pattern->cycles_per_duty *
-			period_ns / NSEC_PER_MSEC;
-	else
-		lpg->ramp_config.step_ms = (period_ns / NSEC_PER_MSEC) *
-			output_pattern->cycles_per_duty;
+
+	tmp = (u64)output_pattern->cycles_per_duty * period_ns;
+	do_div(tmp, NSEC_PER_MSEC);
+	lpg->ramp_config.step_ms = (u16)tmp;
 
 	rc = qpnp_lpg_set_ramp_config(lpg);
 	if (rc < 0)
@@ -1241,14 +1347,18 @@ static void qpnp_lpg_pwm_dbg_show(struct pwm_chip *pwm_chip, struct seq_file *s)
 		seq_printf(s, "     prediv = %d\n", cfg->prediv);
 		seq_printf(s, "     exponent = %d\n", cfg->clk_exp);
 		seq_printf(s, "     pwm_value = %d\n", cfg->pwm_value);
-		seq_printf(s, "  Requested period: %dns, best period = %dns\n",
-				pwm_get_period(pwm), cfg->best_period_ns);
+		seq_printf(s, "  Requested period: %lluns, best period = %lluns\n",
+			pwm_get_period_extend(pwm), cfg->best_period_ns);
 
 		ramp = &lpg->ramp_config;
 		if (pwm_get_output_type(pwm) == PWM_OUTPUT_MODULATED) {
 			seq_puts(s, "  ramping duty percentages:");
 			for (j = 0; j < ramp->pattern_length; j++)
+#ifdef CONFIG_LEDS_LGE_EMOTIONAL
+				seq_printf(s, " %d", ramp->pattern[j+ramp->lo_idx]);
+#else
 				seq_printf(s, " %d", ramp->pattern[j]);
+#endif
 			seq_puts(s, "\n");
 			seq_printf(s, "  ramping time per step: %dms\n",
 					ramp->step_ms);
@@ -1273,6 +1383,7 @@ static void qpnp_lpg_pwm_dbg_show(struct pwm_chip *pwm_chip, struct seq_file *s)
 
 static const struct pwm_ops qpnp_lpg_pwm_ops = {
 	.config = qpnp_lpg_pwm_config,
+	.config_extend = qpnp_lpg_pwm_config_extend,
 	.get_output_type_supported = qpnp_lpg_pwm_output_types_supported,
 	.set_output_type = qpnp_lpg_pwm_set_output_type,
 	.set_output_pattern = qpnp_lpg_pwm_set_output_pattern,

@@ -30,6 +30,9 @@
 #include <linux/usb_bam.h>
 #include <linux/extcon.h>
 #include <linux/regulator/driver.h>
+#ifdef CONFIG_LGE_USB
+#include <linux/qpnp/qpnp-adc.h>
+#endif
 /**
  * Requested USB votes for NOC frequency
  *
@@ -310,6 +313,12 @@ struct msm_otg {
 
 	char (buf[DEBUG_MAX_MSG])[DEBUG_MSG_LEN];   /* buffer */
 	unsigned int vbus_state;
+#ifdef CONFIG_LGE_USB
+	struct qpnp_vadc_chip	*vadc_otg_dev;
+	struct qpnp_adc_tm_btm_param adc_param;
+	struct delayed_work init_adc_work;
+	bool id_adc_detect;
+#endif
 	unsigned int usb_irq_count;
 	int pm_qos_latency;
 	unsigned int notify_current_mA;

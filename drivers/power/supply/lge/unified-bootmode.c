@@ -1,0 +1,243 @@
+#define pr_fmt(fmt) "BOOTMOD: %s: " fmt, __func__
+#define pr_bootmod(fmt, ...) pr_err(fmt, ##__VA_ARGS__)
+
+#define LENGTH_STRING_BUFFER	128
+
+#include "veneer-primitives.h"
+
+//////////////////////////////////////////////////////////////////////
+// for detecting boot mode
+//////////////////////////////////////////////////////////////////////
+
+static char bootmode_cable [LENGTH_STRING_BUFFER] = { 0, };
+static char bootmode_android [LENGTH_STRING_BUFFER] = { 0, };
+static enum veneer_bootmode bootmode_type = BOOTMODE_ETC_UNKNOWN;
+
+static void unified_bootmode_setup(void) {
+	bootmode_type =
+		!strcmp(bootmode_android, "qem_56k")	 ?
+			(!strcmp(bootmode_cable, "LT_56K")
+				? BOOTMODE_MINIOS_56K : BOOTMODE_MINIOS_AAT) :
+		!strcmp(bootmode_android, "miniOS")	 ? BOOTMODE_MINIOS_AAT :
+		!strcmp(bootmode_android, "qem_130k")	 ? BOOTMODE_MINIOS_130K :
+		!strcmp(bootmode_android, "pif_910k")	 ? BOOTMODE_LAF_910K :
+		!strcmp(bootmode_android, "qem_910k")	 ? BOOTMODE_LAF_910K :
+		!strcmp(bootmode_android, "pif_56k")	 ? BOOTMODE_ANDROID_56K :
+		!strcmp(bootmode_android, "pif_130k")	 ? BOOTMODE_ANDROID_130K :
+		!strcmp(bootmode_android, "chargerlogo") ? BOOTMODE_ETC_CHARGERLOGO
+			: BOOTMODE_ANDROID_NORMAL;
+
+	pr_bootmod("input=(%s, %s)->%s\n", bootmode_cable, bootmode_android,
+		unified_bootmode_marker());
+}
+
+const char* unified_bootmode_marker(void) {
+	switch (bootmode_type) {
+	case BOOTMODE_ANDROID_NORMAL:	return "A_N";
+	case BOOTMODE_ANDROID_56K:	return "A_5";
+	case BOOTMODE_ANDROID_130K:	return "A_1";
+	case BOOTMODE_ANDROID_910K:	return "A_9";
+	case BOOTMODE_MINIOS_AAT:	return "M_A";
+	case BOOTMODE_MINIOS_56K:	return "M_5";
+	case BOOTMODE_MINIOS_130K:	return "M_1";
+	case BOOTMODE_MINIOS_910K:	return "M_9";
+	case BOOTMODE_LAF_NORMAL:	return "L_N";
+	case BOOTMODE_LAF_910K:		return "L_9";
+	case BOOTMODE_ETC_CHARGERLOGO:	return "E_C";
+	case BOOTMODE_ETC_RECOVERY:	return "E_R";
+	default :
+		break;
+	}
+	return "???"; // BOOTMODE_ETC_UNKNOWN
+}
+EXPORT_SYMBOL(unified_bootmode_marker);
+
+enum charger_usbid unified_bootmode_usbid(void) {
+	switch (bootmode_type) {
+	case BOOTMODE_ANDROID_56K:
+	case BOOTMODE_MINIOS_56K:	return CHARGER_USBID_56KOHM;
+
+	case BOOTMODE_ANDROID_130K:
+	case BOOTMODE_MINIOS_130K:	return CHARGER_USBID_130KOHM;
+
+	case BOOTMODE_ANDROID_910K:
+	case BOOTMODE_MINIOS_910K:
+	case BOOTMODE_LAF_910K:		return CHARGER_USBID_910KOHM;
+
+	default:
+		break;
+	}
+
+	return CHARGER_USBID_OPEN;
+}
+
+bool unified_bootmode_fabproc(void) {
+	switch (bootmode_type) {
+	case BOOTMODE_ANDROID_56K:
+	case BOOTMODE_ANDROID_130K:
+	case BOOTMODE_MINIOS_56K:
+	case BOOTMODE_MINIOS_130K:
+	case BOOTMODE_LAF_910K:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
+void unified_bootmode_cable(char* arg) {
+	strncpy(bootmode_cable, arg, LENGTH_STRING_BUFFER-1);
+	unified_bootmode_setup();
+}
+
+void unified_bootmode_android(char* arg) {
+	strncpy(bootmode_android, arg, LENGTH_STRING_BUFFER-1);
+	unified_bootmode_setup();
+}
+
+bool unified_bootmode_chargerlogo(void) {
+	return bootmode_type == BOOTMODE_ETC_CHARGERLOGO;
+}
+
+enum veneer_bootmode unified_bootmode_type(void) {
+	return bootmode_type;
+}
+
+#ifdef CONFIG_LGE_ONE_BINARY_SKU
+//////////////////////////////////////////////////////////////////////
+// for detecting running S/W upon one-binary
+//////////////////////////////////////////////////////////////////////
+
+static enum lge_laop_operator_type laop_bootmode_operator;
+
+static enum {
+	OPERATOR_KT,
+	OPERATOR_ATT,
+	OPERATOR_CRK,
+	OPERATOR_LGU,
+	OPERATOR_SKT,
+	OPERATOR_SPR,
+	OPERATOR_TMO,
+	OPERATOR_VZW,
+	OPERATOR_OPEN,
+
+	OPERATOR_MISC,
+} bootmode_operator = OPERATOR_MISC;
+
+static enum {
+	REGION_CAN,
+	REGION_JPN,
+	REGION_KOR,
+	REGION_USA,
+
+	REGION_COM,
+} bootmode_region = REGION_COM;
+
+const char* unified_bootmode_operator(void) {
+	switch (bootmode_operator) {
+	case OPERATOR_KT   :	return "KT";
+	case OPERATOR_ATT  :	return "ATT";
+	case OPERATOR_CRK  :    return "CRK";
+	case OPERATOR_LGU  :	return "LGU";
+	case OPERATOR_SKT  :	return "SKT";
+	case OPERATOR_SPR  :	return "SPR";
+	case OPERATOR_TMO  :	return "TMO";
+	case OPERATOR_VZW  :	return "VZW";
+	case OPERATOR_OPEN :	return "OPEN";
+
+	case OPERATOR_MISC : 	return "MISC";
+	default :
+		break;
+	}
+
+	return "INVALID";
+}
+
+const char* unified_bootmode_region(void) {
+	switch (bootmode_region) {
+	case REGION_CAN :	return "CAN";
+	case REGION_JPN :	return "JPN";
+	case REGION_KOR :	return "KOR";
+	case REGION_USA :	return "USA";
+
+	case REGION_COM :	return "COM";
+	default :
+		break;
+	}
+
+	return "INVALID";
+}
+
+bool unified_bootmode_chgverbose(void) {
+#ifdef CONFIG_LGE_PM_LAOP_ATT_CRK_SIM_BASED_SWITCHING
+	char buf[2] = { 0, };
+
+	if (bootmode_operator == OPERATOR_VZW) {
+		return true;
+	} else if (bootmode_operator == OPERATOR_ATT || bootmode_operator == OPERATOR_CRK) {
+		if (unified_bootmode_chargerlogo()) {
+			return true;
+		} else {
+			unified_nodes_show("charger_verbose_att_op", buf);
+			if (!strcmp(buf,"1"))
+				return true;
+			else
+				return false;
+		}
+	} else {
+		return false;
+	}
+#else
+	return bootmode_operator == OPERATOR_ATT || bootmode_operator == OPERATOR_VZW;
+#endif
+}
+
+void unified_bootmode_operator_init(void)
+{
+	laop_bootmode_operator = lge_get_laop_operator();
+
+	if (laop_bootmode_operator == OP_KT_KR)
+		bootmode_operator = OPERATOR_KT;
+	else if (laop_bootmode_operator == OP_LGU_KR)
+		bootmode_operator = OPERATOR_LGU;
+	else if (laop_bootmode_operator == OP_SKT_KR)
+		bootmode_operator = OPERATOR_SKT;
+	else if (laop_bootmode_operator == OP_ATT_US)
+		bootmode_operator = OPERATOR_ATT;
+	else if (laop_bootmode_operator == OP_CRK_US)
+		bootmode_operator = OPERATOR_CRK;
+	else if (laop_bootmode_operator == OP_SPR_US)
+		bootmode_operator = OPERATOR_SPR;
+	else if (laop_bootmode_operator == OP_TMO_US)
+		bootmode_operator = OPERATOR_TMO;
+	else if (laop_bootmode_operator == OP_VZW_POSTPAID || laop_bootmode_operator == OP_VZW_PREPAID)
+		bootmode_operator = OPERATOR_VZW;
+	else if (laop_bootmode_operator == OP_OPEN_KR || laop_bootmode_operator == OP_OPEN_CA
+			|| laop_bootmode_operator == OP_OPEN_US || laop_bootmode_operator == OP_OPEN_RU
+			|| laop_bootmode_operator == OP_GLOBAL)
+		bootmode_operator = OPERATOR_OPEN;
+	else
+		bootmode_operator = OPERATOR_MISC;
+
+	if (laop_bootmode_operator == OP_ATT_US || laop_bootmode_operator == OP_TMO_US || laop_bootmode_operator == OP_MPCS_US
+			|| laop_bootmode_operator == OP_USC_US || laop_bootmode_operator == OP_SPR_US || laop_bootmode_operator == OP_CCA_LRA_ACG_US
+			|| laop_bootmode_operator == OP_TRF_US || laop_bootmode_operator == OP_AMZ_US || laop_bootmode_operator == OP_GFI_US
+			|| laop_bootmode_operator == OP_VZW_POSTPAID || laop_bootmode_operator == OP_VZW_PREPAID || laop_bootmode_operator == OP_COMCAST_US
+			|| laop_bootmode_operator == OP_CRK_US || laop_bootmode_operator == OP_OPEN_US || laop_bootmode_operator == OP_CHARTER_US)
+        bootmode_region = REGION_USA;
+	else if(laop_bootmode_operator == OP_OPEN_KR || laop_bootmode_operator == OP_SKT_KR || laop_bootmode_operator == OP_KT_KR || laop_bootmode_operator == OP_LGU_KR)
+		bootmode_region = REGION_KOR;
+	else if(laop_bootmode_operator == OP_OPEN_CA)
+		bootmode_region = REGION_CAN;
+	else
+		bootmode_region = REGION_COM;
+
+	pr_bootmod("laop_bootmode_operator = %d, operator %s, region %s\n", 
+		laop_bootmode_operator, unified_bootmode_operator(), unified_bootmode_region());
+}
+#else
+bool unified_bootmode_chgverbose(void) {
+		return 0;
+}
+#endif

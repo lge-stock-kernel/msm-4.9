@@ -42,9 +42,13 @@ config ANDROID_VSOC
 	  a 'cuttlefish' Android image inside QEmu. The driver interacts with
 	  a QEmu ivshmem device. If built as a module, it will be called vsoc.
 
-source "drivers/staging/android/ion/Kconfig"
+config LOW_TIER_DEVICE
+	bool "Android Low Memory Killer: for low tier device(Ex.quad core and 2GB RAM)"
+	depends on ANDROID_LOW_MEMORY_KILLER
+	---help---
+	  Its for low tier device
 
-source "drivers/staging/android/fiq_debugger/Kconfig"
+source "drivers/staging/android/ion/Kconfig"
 
 endif # if ANDROID
 

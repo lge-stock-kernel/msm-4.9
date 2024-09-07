@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018, 2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -593,12 +593,12 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 		return 0;
 	}
 
-	pdata = (struct msm_plat_data *)
+        pdata = (struct msm_plat_data *)
 			dev_get_drvdata(soc_prtd->platform->dev);
-	if (!pdata) {
-		pr_err("%s: pdata not found\n", __func__);
-		return -ENODEV;
-	}
+        if (!pdata) {
+                pr_err("%s: pdata not found\n", __func__);
+               return -ENODEV;
+        }
 
 	mutex_lock(&pdata->lock);
 	if (ac) {
@@ -679,7 +679,7 @@ static int msm_pcm_volume_ctl_get(struct snd_kcontrol *kcontrol,
 	}
 
 	pdata = (struct msm_plat_data *)
-			dev_get_drvdata(soc_prtd->platform->dev);
+		dev_get_drvdata(soc_prtd->platform->dev);
 	if (!pdata) {
 		pr_err("%s: pdata not found\n", __func__);
 		return -ENODEV;
@@ -717,7 +717,7 @@ static int msm_pcm_volume_ctl_put(struct snd_kcontrol *kcontrol,
 	}
 
 	pdata = (struct msm_plat_data *)
-			dev_get_drvdata(soc_prtd->platform->dev);
+		dev_get_drvdata(soc_prtd->platform->dev);
 	if (!pdata) {
 		pr_err("%s: pdata not found\n", __func__);
 		return -ENODEV;

@@ -55,6 +55,10 @@
 #include "debug.h"
 #include "xhci.h"
 
+#ifndef CONFIG_LGE_USB_TYPE_C
+#include <linux/qpnp/qpnp-adc.h>
+#endif
+
 #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
 
 /* time out to wait for USB cable status notification (in ms)*/
@@ -70,6 +74,12 @@
 static int cpu_to_affin;
 module_param(cpu_to_affin, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(cpu_to_affin, "affin usb irq to this cpu");
+#ifndef CONFIG_LGE_USB_TYPE_C
+/* ADC threshold values */
+static int adc_low_threshold = 20000;
+static int adc_high_threshold = 1500000;
+static int adc_meas_interval = ADC_MEAS1_INTERVAL_1S;
+#endif
 
 /* XHCI registers */
 #define USB3_HCSPARAMS1		(0x4)
@@ -235,6 +245,11 @@ struct dwc3_msm {
 	bool			use_pdc_interrupts;
 	enum dwc3_id_state	id_state;
 	unsigned long		lpm_flags;
+#ifndef CONFIG_LGE_USB_TYPE_C
+	struct qpnp_adc_tm_chip   *vadc_id_dev;
+	struct qpnp_adc_tm_btm_param	adc_param;
+	struct delayed_work init_adc_work;
+#endif
 #define MDWC3_SS_PHY_SUSPEND		BIT(0)
 #define MDWC3_ASYNC_IRQ_WAKE_CAPABILITY	BIT(1)
 #define MDWC3_POWER_COLLAPSE		BIT(2)
@@ -3343,6 +3358,78 @@ static ssize_t xhci_link_compliance_store(struct device *dev,
 
 static DEVICE_ATTR_RW(xhci_link_compliance);
 
+#ifndef CONFIG_LGE_USB_TYPE_C
+static void dwc3_adc_notification(enum qpnp_tm_state state, void *ctx)
+{
+	struct dwc3_msm *mdwc = ctx;
+
+	dev_err(mdwc->dev, "%s\n", __func__);
+
+	if (state >= ADC_TM_STATE_NUM) {
+		pr_err("%s: invalid notification %d\n", __func__, state);
+		return;
+	}
+
+	dev_err(mdwc->dev, "%s: state = %s\n", __func__,
+			state == ADC_TM_HIGH_STATE ? "high" : "low");
+
+	if (state == ADC_TM_HIGH_STATE)  {
+		mdwc->id_state = DWC3_ID_FLOAT;
+		mdwc->adc_param.state_request = ADC_TM_LOW_THR_ENABLE;
+		mdwc->adc_param.low_thr = adc_low_threshold;
+		mdwc->adc_param.high_thr = 1800000;
+	} else if (state == ADC_TM_LOW_STATE) {
+		mdwc->id_state = DWC3_ID_GROUND;
+		mdwc->adc_param.state_request = ADC_TM_HIGH_THR_ENABLE;
+		mdwc->adc_param.low_thr = 0;
+		mdwc->adc_param.high_thr = adc_high_threshold;
+	} else {
+		dev_err(mdwc->dev, "%s: Invalid adc notification for usbid\n", __func__);
+		goto skip_id_work;
+	}
+	queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
+
+skip_id_work:
+	msleep(50);
+
+	/* re-arm ADC interrupt */
+	qpnp_adc_tm_channel_measure(mdwc->vadc_id_dev, &mdwc->adc_param);
+}
+
+static void dwc3_init_adc_work(struct work_struct *w)
+{
+	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
+							init_adc_work.work);
+	int ret;
+
+	if (IS_ERR_OR_NULL(mdwc->vadc_id_dev)) {
+		mdwc->vadc_id_dev = qpnp_get_adc_tm(mdwc->dev, "dwc");
+		 if (IS_ERR(mdwc->vadc_id_dev)) {
+			 if (PTR_ERR(mdwc->vadc_id_dev) == -EPROBE_DEFER) {
+				 dev_err(mdwc->dev, "%s: qpnp vadc not yet "
+					"probed.\n",  __func__);
+				 queue_delayed_work(mdwc->dwc3_wq,to_delayed_work(w),
+					msecs_to_jiffies(500));
+			 }
+		 }
+	}
+
+	mdwc->adc_param.low_thr = adc_low_threshold;
+	mdwc->adc_param.high_thr = adc_high_threshold;
+	mdwc->adc_param.timer_interval = adc_meas_interval;
+	mdwc->adc_param.state_request = ADC_TM_HIGH_LOW_THR_ENABLE;
+	mdwc->adc_param.btm_ctx = mdwc;
+	mdwc->adc_param.threshold_notification = dwc3_adc_notification;
+	mdwc->adc_param.channel = VADC_AMUX3_GPIO;
+
+	ret = qpnp_adc_tm_channel_measure(mdwc->vadc_id_dev, &mdwc->adc_param);
+
+	if (ret) {
+		dev_err(mdwc->dev, "%s: request ADC error %d\n", __func__, ret);
+		return;
+	}
+}
+#endif
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -3372,6 +3459,9 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&mdwc->sm_work, dwc3_otg_sm_work);
 	INIT_DELAYED_WORK(&mdwc->perf_vote_work, msm_dwc3_perf_vote_work);
 	INIT_DELAYED_WORK(&mdwc->sdp_check, check_for_sdp_connection);
+#ifndef CONFIG_LGE_USB_TYPE_C
+	INIT_DELAYED_WORK(&mdwc->init_adc_work, dwc3_init_adc_work);
+#endif
 
 	mdwc->dwc3_wq = alloc_ordered_workqueue("dwc3_wq", 0);
 	if (!mdwc->dwc3_wq) {
@@ -3654,9 +3744,14 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	mdwc->no_vbus_vote_type_c = of_property_read_bool(node,
 					"qcom,no-vbus-vote-with-type-C");
 
+#ifndef CONFIG_LGE_USB_TYPE_C
+	queue_delayed_work(mdwc->dwc3_wq, &mdwc->init_adc_work, msecs_to_jiffies(1000));
+#endif
 	mutex_init(&mdwc->suspend_resume_mutex);
 	/* Mark type-C as true by default */
+#ifdef CONFIG_LGE_USB_TYPE_C
 	mdwc->type_c = true;
+#endif
 	if (of_property_read_bool(node, "qcom,connector-type-uAB"))
 		mdwc->type_c = false;
 
@@ -3958,6 +4053,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	}
 
 	if (on) {
+#ifdef CONFIG_LGE_USB
+		if (mdwc->in_host_mode) {
+			dev_err(mdwc->dev, "%s: already turned on host\n",
+				 __func__);
+			return 0;
+		}
+#endif
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
 
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
@@ -4052,6 +4154,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		schedule_delayed_work(&mdwc->perf_vote_work,
 				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
 	} else {
+#ifdef CONFIG_LGE_USB
+		if (!mdwc->in_host_mode) {
+			dev_err(mdwc->dev, "%s: already turned off host\n",
+				 __func__);
+			return 0;
+		}
+#endif
 		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
 
 		usb_unregister_atomic_notify(&mdwc->usbdev_nb);

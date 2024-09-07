@@ -18,7 +18,11 @@
 #include "msm_isp48.h"
 
 #define HANDLE_TO_IDX(handle) (handle & 0xFF)
+#ifndef CONFIG_MACH_LGE
 #define ISP_SOF_DEBUG_COUNT 0
+#else
+#define ISP_SOF_DEBUG_COUNT 5
+#endif
 
 #ifdef CONFIG_MSM_AVTIMER
 static struct avtimer_fptr_t avtimer_func;
@@ -1017,6 +1021,15 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 	struct msm_vfe_sof_info *sof_info = NULL, *self_sof = NULL;
 	enum msm_vfe_dual_hw_ms_type ms_type;
 	unsigned long flags;
+
+#ifdef CONFIG_MACH_LGE
+/* LGE_CHANGE_S, STATIC_ANALYSYS_DEV */
+	if (frame_src >= VFE_SRC_MAX) {
+		pr_err("%s: frame_src value is error = %d\n", __func__,	frame_src);
+		return;
+	}
+/* LGE_CHANGE_E, STATIC_ANALYSYS_DEV */
+#endif
 
 	memset(&event_data, 0, sizeof(event_data));
 
@@ -2274,6 +2287,18 @@ int msm_isp_drop_frame(struct vfe_device *vfe_dev,
 	pingpong_bit =
 		(~(pingpong_status >> stream_info->wm[vfe_idx][0]) & 0x1);
 	done_buf = stream_info->buf[pingpong_bit];
+
+	if( (!done_buf) && (stream_info->frame_id == stream_info->last_frame_id+1) && (stream_info->last_frame_id > 1))
+	{
+		pingpong_status = ~pingpong_status;
+		pingpong_bit =
+			(~(pingpong_status >> stream_info->wm[vfe_idx][0]) & 0x1);
+		done_buf = stream_info->buf[pingpong_bit];
+		if(stream_info->stream_id == 3)
+			pr_err("%s:%d done_buf=%p composite_irq[MSM_ISP_COMP_IRQ_EPOCH]=%d sw_ping_pong_bit=%d reg_updated=%d  vfe_dev=%p vfe_idx=%d pingpong_status=0x%x\n",__func__, __LINE__,
+			done_buf, stream_info->composite_irq[MSM_ISP_COMP_IRQ_EPOCH],stream_info->sw_ping_pong_bit,vfe_dev->reg_updated,vfe_dev,vfe_idx,pingpong_status );
+	}
+
 	if (done_buf &&
 		(stream_info->composite_irq[MSM_ISP_COMP_IRQ_EPOCH] == 0)) {
 		if ((stream_info->sw_ping_pong_bit != -1) &&
@@ -2303,6 +2328,7 @@ int msm_isp_drop_frame(struct vfe_device *vfe_dev,
 		/*this notify is per ping and pong buffer*/
 		done_buf->is_drop_reconfig = 1;
 		stream_info->current_framedrop_period = 1;
+		stream_info->last_frame_id = stream_info->frame_id;
 		/*Avoid Multiple request frames for single SOF*/
 		vfe_dev->axi_data.src_info[VFE_PIX_0].accept_frame = false;
 
@@ -4218,6 +4244,7 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 	struct timeval *time_stamp;
 	uint32_t frame_id, buf_index = -1;
 	int vfe_idx;
+	int sw_ping_pong_bit_temp = -1;  /* LGE_CHANGE, 2019-05-10, Fixes "Cancel missing frame" issue , CST */
 
 	if (!ts) {
 		pr_err("%s: Error! Invalid argument\n", __func__);
@@ -4297,7 +4324,8 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 
 	if (stream_info->controllable_output &&
 		(done_buf != NULL) &&
-		(stream_info->sw_ping_pong_bit == -1) &&
+//		(stream_info->sw_ping_pong_bit == -1) &&  /* LGE_CHANGE, 2019-05-09, Fixes "Cancel missing frame" issue , CST */
+		((stream_info->sw_ping_pong_bit == -1) || stream_info->buf[!pingpong_bit] != done_buf)&&
 		(done_buf->is_drop_reconfig == 1)) {
 		/* When wm reloaded and corresponding reg_update fail
 		 * then buffer is reconfig as PING buffer. so, avoid
@@ -4305,6 +4333,7 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		 * next AXI_DONE or buf_done can be successful
 		 */
 		stream_info->buf[pingpong_bit] = done_buf;
+		sw_ping_pong_bit_temp = stream_info->sw_ping_pong_bit; /* LGE_CHANGE, 2019-05-10, Fixes "Cancel missing frame" issue , CST */
 	}
 
 	if (stream_info->stream_type == CONTINUOUS_STREAM ||
@@ -4350,6 +4379,15 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 		return;
 	}
 
+/* LGE_CHANGE_S, 2019-05-10, Fixes "Cancel missing frame" issue , CST */
+	if (stream_info->controllable_output &&
+			(done_buf != NULL) &&
+			(stream_info->buf[pingpong_bit] == done_buf && stream_info->buf[pingpong_bit] !=NULL )&&
+			(done_buf->is_drop_reconfig == 1) && sw_ping_pong_bit_temp != -1) {
+			stream_info->sw_ping_pong_bit ^= 1;
+			pr_err("%s:%d change sw_ping_pong_bit to %d for Cancel missing frame issue pingpong_bit =%d",__func__, __LINE__,stream_info->sw_ping_pong_bit,pingpong_bit);
+		}
+/* LGE_CHANGE_E, 2019-05-10, Fixes "Cancel missing frame" issue , CST */
 
 	if ((done_buf->frame_id != frame_id) &&
 		vfe_dev->axi_data.enable_frameid_recovery) {

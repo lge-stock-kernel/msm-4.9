@@ -369,6 +369,15 @@ put_name:
 	/* See if the low-level filesystem might want
 	 * to use its own hash
 	 */
+#ifdef CONFIG_MACH_LGE
+	lower_dentry = lookup_one_len_unlocked(dname.name, lower_dir_dentry,
+			dname.len);
+	if (IS_ERR(lower_dentry))
+		return lower_dentry;
+
+	if (d_really_is_negative(lower_dentry))
+		err = -ENOENT;
+#else
 	lower_dentry = d_hash_and_lookup(lower_dir_dentry, &dname);
 	if (IS_ERR(lower_dentry))
 		return lower_dentry;
@@ -380,6 +389,7 @@ put_name:
 		err = -ENOENT;
 		goto out;
 	}
+#endif
 
 	lower_path.dentry = lower_dentry;
 	lower_path.mnt = mntget(lower_dir_mnt);
