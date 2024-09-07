@@ -7,6 +7,8 @@
 | `LMG710PM_Android_Oreo_V19a`      | G7 ThinQ  | `judyln`    | `LA.UM.6.3.r6-02200-sdm845.0`  |
 | `LGG710PM_Android_Pie_v21b`       | G7 ThinQ  | `judyln`    | `LA.UM.7.3.r1-06100-sdm845.0`  |
 | `LMQ720TS9_Android_Pie_v90o`      | Stylo 5   | `cv7as`     | `LA.UM.7.6.2.r1-07600-89xx.0`  |
+| `LMX320MA_Android_Pie_v10m`       | Aristo 4  | `mh5lm`     | `LA.UM.7.6.2.r1-07600-89xx.0`  |
+| `LMX320TA_Android_Pie_V10t`       | Aristo 4  | `mh5lm`     | `LA.UM.7.6.2.r1-07600-89xx.0`  |
 | `LMG710EM_Android_Q_V30f`         | G7 ThinQ  | `judyln`    | `LA.UM.8.3.r1-07100-sdm845.0`  |
 | `LGL322DL_Android_Q_20e`          | Journey   | `mh5lm`     | `LA.UM.8.6.2.r1-06600-89xx.0`  |
 | `LMG910EMW_Android_R_v20a`        | Velvet 4G | `caymanslm` | `LA.UM.9.3.r1-01700-sdm845.0`  |
