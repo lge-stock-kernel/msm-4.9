@@ -44,7 +44,10 @@ lge_factory_cable_t lge_get_factory_cable(void);
 bool lge_get_android_dlcomplete(void);
 lge_laf_mode_t lge_get_laf_mode(void);
 #endif
-
+#ifdef CONFIG_LGE_HANDLE_PANIC
+int lge_get_force_reboot_crash(void);
+int lge_get_retrycount(void);
+#endif
 enum hw_rev_no {
 	HW_REV_EVB1 = 0,
 	HW_REV_EVB2,

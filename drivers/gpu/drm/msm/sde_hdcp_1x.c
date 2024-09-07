@@ -1088,6 +1088,7 @@ static void sde_hdcp_1x_auth_work(struct work_struct *work)
 		return;
 	}
 
+	pr_info("hdcp_auth_work +\n");
 	hdcp->sink_r0_ready = false;
 	hdcp->reauth = false;
 	hdcp->ksv_ready = false;
@@ -1139,6 +1140,7 @@ end:
 		hdcp->hdcp_state = HDCP_STATE_AUTH_FAIL;
 
 	sde_hdcp_1x_update_auth_status(hdcp);
+	pr_info("hdcp_auth_work -\n");
 }
 
 static int sde_hdcp_1x_authenticate(void *input)

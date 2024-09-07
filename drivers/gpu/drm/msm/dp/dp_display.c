@@ -183,6 +183,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 
 	dp = container_of(dw, struct dp_display_private, hdcp_cb_work);
 
+	pr_info("hdcp_cb_work +\n");
 	rc = dp->catalog->ctrl.read_hdcp_status(&dp->catalog->ctrl);
 	if (rc >= 0) {
 		hdcp_auth_state = (rc >> 20) & 0x3;
@@ -214,6 +215,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 	default:
 		break;
 	}
+	pr_info("hdcp_cb_work -\n");
 }
 
 static void dp_display_notify_hdcp_status_cb(void *ptr,
@@ -228,8 +230,10 @@ static void dp_display_notify_hdcp_status_cb(void *ptr,
 
 	dp->link->hdcp_status.hdcp_state = state;
 
-	if (dp->dp_display.is_connected)
+	if (dp->dp_display.is_connected) {
+		pr_info("queue hdcp_cb_work\n");
 		queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ/4);
+	}
 }
 
 static void dp_display_destroy_hdcp_workqueue(struct dp_display_private *dp)
@@ -655,6 +659,9 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	dp->dp_display.max_pclk_khz = dp->parser->max_pclk_khz;
 	dp->dp_display.yuv_support = dp->parser->yuv_support;
 notify:
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	if (!rc)
+#endif
 	dp_display_send_hpd_notification(dp, true);
 
 end:
@@ -715,8 +722,18 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp)
 #if defined(CONFIG_LGE_DUAL_SCREEN)
 	dd_lt_dev.state = 0;
 #endif
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	if (dp_display_is_hdcp_enabled(dp) && dp->link->hdcp_status.hdcp_state != HDCP_STATE_INACTIVE) {
+		pr_info("cancel hdcp_cb_work\n");
+		cancel_delayed_work_sync(&dp->hdcp_cb_work);
+		if (dp->hdcp.ops->off)
+			dp->hdcp.ops->off(dp->hdcp.data);
+	}
+#else
 	if (dp_display_is_hdcp_enabled(dp) && dp->hdcp.ops->off)
 		dp->hdcp.ops->off(dp->hdcp.data);
+#endif
 
 	if (dp->audio_supported)
 		dp->audio->off(dp->audio);
@@ -786,7 +803,7 @@ static void dp_display_clean(struct dp_display_private *dp)
 {
 	if (dp_display_is_hdcp_enabled(dp)) {
 		dp->link->hdcp_status.hdcp_state = HDCP_STATE_INACTIVE;
-
+		pr_info("cancel hdcp_cb_work\n");
 		cancel_delayed_work_sync(&dp->hdcp_cb_work);
 		if (dp->hdcp.ops->off)
 			dp->hdcp.ops->off(dp->hdcp.data);
@@ -956,8 +973,8 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 
 	if (dp->usbpd->hpd_irq && dp->usbpd->hpd_high &&
 	    dp->power_on) {
-		dp->link->process_request(dp->link);
-		queue_work(dp->wq, &dp->attention_work);
+		if (!dp->link->process_request(dp->link))
+			queue_work(dp->wq, &dp->attention_work);
 	} else if (dp->usbpd->hpd_high) {
 		queue_work(dp->wq, &dp->connect_work);
 	} else {
@@ -1326,6 +1343,7 @@ static int dp_display_post_enable(struct dp_display *dp_display)
 		cancel_delayed_work_sync(&dp->hdcp_cb_work);
 
 		dp->link->hdcp_status.hdcp_state = HDCP_STATE_AUTHENTICATING;
+		pr_info("queue hdcp_cb_work\n");
 		queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ * 3);
 	}
 
@@ -1361,6 +1379,7 @@ static int dp_display_pre_disable(struct dp_display *dp_display)
 	if (dp_display_is_hdcp_enabled(dp)) {
 		dp->link->hdcp_status.hdcp_state = HDCP_STATE_INACTIVE;
 
+		pr_info("cancel hdcp_cb_work\n");
 		cancel_delayed_work_sync(&dp->hdcp_cb_work);
 		if (dp->hdcp.ops->off)
 			dp->hdcp.ops->off(dp->hdcp.data);

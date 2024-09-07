@@ -709,6 +709,16 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 		case HID_TOUCH_EVENT_UPDATE_STATE:
 			return;
 			break;
+		case HID_TOUCH_STATE_PALM:
+			if (is_palm) {
+				TOUCH_I("Palm Released\n");
+				is_palm = 0;
+				return;
+			}
+			TOUCH_I("Palm Detected\n");
+			is_palm = 1;
+			return;
+			break;
 
 		case HID_TOUCH_STATE_INIT:
 		case HID_TOUCH_STATE_RESUME:
@@ -731,7 +741,6 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 			return;
 			break;
 
-		case HID_TOUCH_STATE_PALM:
 		default: /* Normal HID Touch Events */
 		break;
 		}
@@ -956,14 +965,6 @@ static void mt_touch_report(struct hid_device *hid, struct hid_report *report)
 
 	switch (td->curdata.gesture) {
 	case HID_TOUCH_STATE_PALM:
-		if (is_palm) {
-			TOUCH_I("%s - Palm Released\n", __func__, touch_status_info_str[td->curdata.gesture]);
-			is_palm = 0;
-		} else {
-			TOUCH_I("%s - Palm Detected\n", __func__, touch_status_info_str[td->curdata.gesture]);
-			is_palm = 1;
-		}
-
 		td->curdata.gesture = 0;
 		goto skip_input_sync;
 		break;
@@ -1422,6 +1423,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 static void mt_release_contacts(struct hid_device *hid)
 {
 	struct hid_input *hidinput;
+	struct mt_device *td = hid_get_drvdata(hid);
 
 	list_for_each_entry(hidinput, &hid->inputs, list) {
 		struct input_dev *input_dev = hidinput->input;
@@ -1439,6 +1441,8 @@ static void mt_release_contacts(struct hid_device *hid)
 			input_sync(input_dev);
 		}
 	}
+
+	td->num_received = 0;
 }
 
 static int mt_reset_resume(struct hid_device *hdev)

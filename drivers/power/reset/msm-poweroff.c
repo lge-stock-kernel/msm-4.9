@@ -38,6 +38,7 @@
 #ifdef CONFIG_LGE_HANDLE_PANIC
 #include <soc/qcom/lge/lge_handle_panic.h>
 #endif
+#include <soc/qcom/lge/board_lge.h>
 
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
@@ -852,6 +853,14 @@ static void do_msm_restart_timeout(enum reboot_mode reboot_mode, const char *cmd
 	else {
 	   pr_info("duplicated %s, ignored\n", __func__);
 	}
+
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	if (lge_get_download_mode() == true) {
+		if (lge_get_force_reboot_crash() || lge_get_retrycount()) {
+			BUG();
+		}
+	}
+#endif
 }
 #endif
 
