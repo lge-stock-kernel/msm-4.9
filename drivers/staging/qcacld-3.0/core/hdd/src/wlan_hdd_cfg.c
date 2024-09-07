@@ -488,7 +488,11 @@ struct reg_table_entry g_registry_table[] = {
 	REG_VARIABLE(CFG_CHANNEL_BONDING_MODE_24GHZ_NAME, WLAN_PARAM_Integer,
 		     struct hdd_config, nChannelBondingMode24GHz,
 		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK,
+#ifdef FEATURE_SUPPORT_LGE
+		     0, // LGE patch
+#else
 		     CFG_CHANNEL_BONDING_MODE_DEFAULT,
+#endif
 		     CFG_CHANNEL_BONDING_MODE_MIN,
 		     CFG_CHANNEL_BONDING_MODE_MAX),
 
@@ -2997,6 +3001,14 @@ struct reg_table_entry g_registry_table[] = {
 		     CFG_ROAMING_OFFLOAD_MIN,
 		     CFG_ROAMING_OFFLOAD_MAX),
 #endif
+
+	REG_VARIABLE(CFG_BMISS_SKIP_FULL_SCAN, WLAN_PARAM_Integer,
+		     struct hdd_config, bmiss_skip_full_scan,
+		     VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
+		     CFG_BMISS_SKIP_FULL_SCAN_DEFAULT,
+		     CFG_BMISS_SKIP_FULL_SCAN_MIN,
+		     CFG_BMISS_SKIP_FULL_SCAN_MAX),
+
 #ifdef MSM_PLATFORM
 	REG_VARIABLE(CFG_BUS_BANDWIDTH_HIGH_THRESHOLD, WLAN_PARAM_Integer,
 		     struct hdd_config, busBandwidthHighThreshold,
