@@ -468,8 +468,9 @@ int cam_node_shutdown(struct cam_node *node)
 				continue;
 			/* LGE_CHANGE, CST, put back all ref for ctx */
 			//cam_context_putref(&(node->ctx_list[i]));
-			cam_context_put_allref(&(node->ctx_list[i]));
 		}
+               /* LGE_CHANGE, CST, put back all ref cnt for ctx */
+               cam_context_put_allref(&(node->ctx_list[i]));
 	}
 
 	if (node->hw_mgr_intf.hw_close)
