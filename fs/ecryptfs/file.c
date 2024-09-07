@@ -82,7 +82,7 @@ ecryptfs_filldir(struct dir_context *ctx, const char *lower_name,
 						  buf->sb, lower_name,
 						  lower_namelen);
 	if (rc) {
-		printk(KERN_ERR "%s: Error attempting to decode and decrypt "
+		ecryptfs_printk(KERN_ERR, "%s: Error attempting to decode and decrypt "
 		       "filename [%s]; rc = [%d]\n", __func__, lower_name,
 		       rc);
 		goto out;
@@ -148,6 +148,14 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 	rc = ecryptfs_read_metadata(dentry);
 	if (!rc)
 		goto out;
+#ifdef CONFIG_SDP
+	/*
+	 * initialize file
+	 * no passthrough/xattr for sensitive files
+	 */
+	if ((rc) && crypt_stat->flags & ECRYPTFS_SDP_SENSITIVE)
+		goto out;
+#endif
 
 	if (mount_crypt_stat->flags & ECRYPTFS_PLAINTEXT_PASSTHROUGH_ENABLED) {
 		crypt_stat->flags &= ~(ECRYPTFS_I_SIZE_INITIALIZED
@@ -166,6 +174,31 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 	rc = -EIO;
 out:
 	mutex_unlock(&crypt_stat->cs_mutex);
+#ifdef CONFIG_SDP
+	if(!rc) {
+		/*
+		 * read file
+		 * SDP v2.0 : sensitive directory (SDP vault)
+		 * Files under sensitive directory automatically becomes sensitive
+		 */
+		struct dentry *p = dentry->d_parent;
+		struct inode *parent_inode = p->d_inode;
+		struct ecryptfs_crypt_stat *parent_crypt_stat =
+				&ecryptfs_inode_to_private(parent_inode)->crypt_stat;
+
+		if (!(crypt_stat->flags & ECRYPTFS_SDP_SENSITIVE) &&
+				((S_ISDIR(parent_inode->i_mode)) &&
+						(parent_crypt_stat->flags & ECRYPTFS_SDP_SENSITIVE))) {
+		}
+		if ((crypt_stat->flags & ECRYPTFS_SDP_SENSITIVE) && (crypt_stat->pubkey_len != 0)) {
+			SDP_LOGD("Convert Public key to symmetric key");
+			rc = sdp_file_set_sensitive(dentry, crypt_stat->storage_id);
+			if (rc) {
+				SDP_LOGE("Failed to convert FEKEK to symmetric");
+			}
+		}
+	}
+#endif //CONFIG_SDP
 	return rc;
 }
 
@@ -195,11 +228,14 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 {
 	int rc = 0;
 	struct ecryptfs_crypt_stat *crypt_stat = NULL;
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat;
 	struct dentry *ecryptfs_dentry = file->f_path.dentry;
 	/* Private value of ecryptfs_dentry allocated in
 	 * ecryptfs_lookup() */
 	struct ecryptfs_file_info *file_info;
 
+	mount_crypt_stat = &ecryptfs_superblock_to_private(
+            ecryptfs_dentry->d_sb)->mount_crypt_stat;
 	/* Released in ecryptfs_release or end of function if failure */
 	file_info = kmem_cache_zalloc(ecryptfs_file_info_cache, GFP_KERNEL);
 	ecryptfs_set_file_private(file, file_info);
@@ -220,7 +256,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	mutex_unlock(&crypt_stat->cs_mutex);
 	rc = ecryptfs_get_lower_file(ecryptfs_dentry, inode);
 	if (rc) {
-		printk(KERN_ERR "%s: Error attempting to initialize "
+		ecryptfs_printk(KERN_ERR, "%s: Error attempting to initialize "
 			"the lower file for the dentry with name "
 			"[%pd]; rc = [%d]\n", __func__,
 			ecryptfs_dentry, rc);
@@ -229,13 +265,25 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	if ((ecryptfs_inode_to_private(inode)->lower_file->f_flags & O_ACCMODE)
 	    == O_RDONLY && (file->f_flags & O_ACCMODE) != O_RDONLY) {
 		rc = -EPERM;
-		printk(KERN_WARNING "%s: Lower file is RO; eCryptfs "
+		ecryptfs_printk(KERN_WARNING, "%s: Lower file is RO; eCryptfs "
 		       "file must hence be opened RO\n", __func__);
 		goto out_put;
 	}
 	ecryptfs_set_file_lower(
 		file, ecryptfs_inode_to_private(inode)->lower_file);
 	rc = read_or_initialize_metadata(ecryptfs_dentry);
+
+#ifdef CONFIG_SDP
+	if (rc && (file->f_flags & O_SDP)) {
+		SDP_LOGE("failed read_or_initialize_metadata\n");
+		mutex_lock(&crypt_stat->cs_mutex);
+		crypt_stat->flags &= ~(ECRYPTFS_KEY_VALID);
+		mutex_unlock(&crypt_stat->cs_mutex);
+		rc = 0;
+		goto out;
+	}
+#endif
+
 	if (rc)
 		goto out_put;
 	ecryptfs_printk(KERN_DEBUG, "inode w/ addr = [0x%p], i_ino = "
@@ -279,7 +327,7 @@ static int ecryptfs_dir_open(struct inode *inode, struct file *file)
 	lower_file = dentry_open(ecryptfs_dentry_to_lower_path(ecryptfs_dentry),
 				 file->f_flags, current_cred());
 	if (IS_ERR(lower_file)) {
-		printk(KERN_ERR "%s: Error attempting to initialize "
+		ecryptfs_printk(KERN_ERR, "%s: Error attempting to initialize "
 			"the lower file for the dentry with name "
 			"[%pd]; rc = [%ld]\n", __func__,
 			ecryptfs_dentry, PTR_ERR(lower_file));
@@ -304,7 +352,16 @@ static int ecryptfs_flush(struct file *file, fl_owner_t td)
 
 static int ecryptfs_release(struct inode *inode, struct file *file)
 {
+#ifdef CONFIG_SDP
+	struct ecryptfs_crypt_stat *crypt_stat;
+	crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
+
+	mutex_lock(&crypt_stat->cs_mutex);
+#endif
 	ecryptfs_put_lower_file(inode);
+#ifdef CONFIG_SDP
+	mutex_unlock(&crypt_stat->cs_mutex);
+#endif
 	kmem_cache_free(ecryptfs_file_info_cache,
 			ecryptfs_file_to_private(file));
 	return 0;
@@ -352,6 +409,13 @@ ecryptfs_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct file *lower_file = ecryptfs_file_to_lower(file);
 	long rc = -ENOTTY;
 
+#ifdef CONFIG_SDP
+	rc = sdp_file_ioctl(file, cmd, arg);
+	if (rc == 0)    //Normal operation
+		return rc;
+	SDP_LOGE("failed to sdp_file_ioctl[%ld]", rc);
+#endif
+
 	if (!lower_file->f_op->unlocked_ioctl)
 		return rc;
 
@@ -376,6 +440,12 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct file *lower_file = ecryptfs_file_to_lower(file);
 	long rc = -ENOIOCTLCMD;
+
+#ifdef CONFIG_SDP
+	rc = sdp_file_ioctl(file, cmd, arg);
+	if (rc == 0)
+		return rc;
+#endif
 
 	if (!lower_file->f_op->compat_ioctl)
 		return rc;

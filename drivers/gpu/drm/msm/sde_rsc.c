@@ -30,9 +30,6 @@
 #include "sde_rsc_priv.h"
 #include "sde_dbg.h"
 
-#define SDE_RSC_DRV_DBG_NAME		"sde_rsc_drv"
-#define SDE_RSC_WRAPPER_DBG_NAME	"sde_rsc_wrapper"
-
 /* worst case time to execute the one tcs vote(sleep/wake) - ~1ms */
 #define SINGLE_TCS_EXECUTION_TIME				1064000
 
@@ -882,23 +879,24 @@ EXPORT_SYMBOL(sde_rsc_client_state_update);
 int sde_rsc_client_vote(struct sde_rsc_client *caller_client,
 		u32 bus_id, u64 ab_vote, u64 ib_vote)
 {
-	int rc = 0;
+	int rc = 0, rsc_index;
 	struct sde_rsc_priv *rsc;
 
-	if (!caller_client) {
-		pr_err("invalid client for ab/ib vote\n");
-		return -EINVAL;
-	} else if (caller_client->rsc_index >= MAX_RSC_COUNT) {
+	if (caller_client && caller_client->rsc_index >= MAX_RSC_COUNT) {
 		pr_err("invalid rsc index\n");
 		return -EINVAL;
+	} else if (!caller_client) {
+		pr_debug("invalid client for ab/ib vote\n");
 	}
 
-	rsc = rsc_prv_list[caller_client->rsc_index];
+	rsc_index = caller_client ? caller_client->rsc_index : SDE_RSC_INDEX;
+	rsc = rsc_prv_list[rsc_index];
 	if (!rsc)
 		return -EINVAL;
 
 	pr_debug("client:%s ab:%llu ib:%llu\n",
-			caller_client->name, ab_vote, ib_vote);
+			caller_client ? caller_client->name : "unknwon",
+			ab_vote, ib_vote);
 
 	mutex_lock(&rsc->client_lock);
 	rc = sde_rsc_clk_enable(&rsc->phandle, rsc->pclient, true);
@@ -1284,6 +1282,12 @@ static int sde_rsc_bind(struct device *dev,
 							rsc->drv_io.len);
 	sde_dbg_reg_register_base(SDE_RSC_WRAPPER_DBG_NAME,
 				rsc->wrapper_io.base, rsc->wrapper_io.len);
+	sde_dbg_reg_register_base(SDE_PDC_DBG_NAME,
+				rsc->pdc_io.base, rsc->pdc_io.len);
+	sde_dbg_reg_register_base(SDE_PDC_SEQ_DBG_NAME,
+				rsc->pdc_seq_mem_io.base, rsc->pdc_seq_mem_io.len);
+	sde_dbg_reg_register_base(DISP_CC_DBG_NAME,
+				rsc->dispcc_io.base, rsc->dispcc_io.len);
 	return 0;
 }
 
@@ -1376,6 +1380,9 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		pr_err("sde rsc: drv io data mapping failed ret:%d\n", ret);
 		goto sde_rsc_fail;
 	}
+	ret = msm_dss_ioremap_byname(pdev, &rsc->pdc_io, "pdc");
+	ret = msm_dss_ioremap_byname(pdev, &rsc->pdc_seq_mem_io, "pdc_seq_mem");
+	ret = msm_dss_ioremap_byname(pdev, &rsc->dispcc_io, "dispcc");
 
 	rsc->fs = devm_regulator_get(&pdev->dev, "vdd");
 	if (IS_ERR_OR_NULL(rsc->fs)) {

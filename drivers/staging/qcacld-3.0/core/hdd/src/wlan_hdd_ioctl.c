@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -50,6 +50,13 @@
 
 #if defined(LINUX_QCMBR)
 #define SIOCIOCTLTX99 (SIOCDEVPRIVATE+13)
+#endif
+
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
+#include <asm/types.h>
+#include <cds_mq.h>
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
 #endif
 
 /*
@@ -1494,13 +1501,6 @@ hdd_parse_set_roam_scan_channels_v1(hdd_adapter_t *adapter,
 		goto exit;
 	}
 
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    channel_list, num_chan)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status =
 		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
 						  adapter->sessionId,
@@ -1562,13 +1562,6 @@ hdd_parse_set_roam_scan_channels_v2(hdd_adapter_t *adapter,
 
 	for (i = 0; i < num_chan; i++) {
 		channel = *value++;
-		if (!channel) {
-			hdd_err("Channels end at index %d, expected %d",
-				i, num_chan);
-			ret = -EINVAL;
-			goto exit;
-		}
-
 		if (channel > WNI_CFG_CURRENT_CHANNEL_STAMAX) {
 			hdd_err("index %d invalid channel %d",
 				  i, channel);
@@ -1577,14 +1570,6 @@ hdd_parse_set_roam_scan_channels_v2(hdd_adapter_t *adapter,
 		}
 		channel_list[i] = channel;
 	}
-
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    channel_list, num_chan)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status =
 		sme_change_roam_scan_channel_list(hdd_ctx->hHal,
 						  adapter->sessionId,
@@ -2397,6 +2382,131 @@ free:
 	return retval;
 }
 
+#ifdef WLAN_AP_STA_CONCURRENCY
+/**
+ * hdd_conc_set_dwell_time() - Set Concurrent dwell time parameters
+ * @adapter: Adapter upon which the command was received
+ * @command: ASCII text command that is received
+ *
+ * Driver commands:
+ * wpa_cli DRIVER CONCSETDWELLTIME ACTIVE MAX <value>
+ * wpa_cli DRIVER CONCSETDWELLTIME ACTIVE MIN <value>
+ * wpa_cli DRIVER CONCSETDWELLTIME PASSIVE MAX <value>
+ * wpa_cli DRIVER CONCSETDWELLTIME PASSIVE MIN <value>
+ *
+ * Return: 0 for success non-zero for failure
+ */
+static int hdd_conc_set_dwell_time(hdd_context_t *hdd_ctx, uint8_t *command)
+{
+	tHalHandle hhal;
+	struct hdd_config *p_cfg;
+	u8 *value = command;
+	tSmeConfigParams *sme_config;
+	int val = 0, temp = 0;
+	int retval = 0;
+
+	p_cfg = hdd_ctx->config;
+	hhal = hdd_ctx->hHal;
+	if (!p_cfg || !hhal) {
+		hdd_err("Argument passed for CONCSETDWELLTIME is incorrect");
+		return -EINVAL;
+	}
+
+	sme_config = qdf_mem_malloc(sizeof(*sme_config));
+	if (!sme_config) {
+		hdd_err("Failed to allocate memory for sme_config");
+		return -ENOMEM;
+	}
+
+	qdf_mem_zero(sme_config, sizeof(*sme_config));
+	sme_get_config_param(hhal, sme_config);
+
+	if (strncmp(command, "CONCSETDWELLTIME ACTIVE MAX", 27) == 0) {
+		if (drv_cmd_validate(command, 27)) {
+			hdd_err("Invalid driver command");
+			retval = -EINVAL;
+			goto sme_config_free;
+		}
+
+		value = value + 28;
+		temp = kstrtou32(value, 10, &val);
+		if (temp != 0 || val < CFG_ACTIVE_MAX_CHANNEL_TIME_CONC_MIN ||
+		    val > CFG_ACTIVE_MAX_CHANNEL_TIME_CONC_MAX) {
+			hdd_err("Argument passed for CONCSETDWELLTIME ACTIVE MAX is incorrect");
+			retval = -EFAULT;
+			goto sme_config_free;
+		}
+
+		p_cfg->nActiveMaxChnTimeConc = val;
+		sme_config->csrConfig.nActiveMaxChnTimeConc = val;
+		sme_update_config(hhal, sme_config);
+	} else if (strncmp(command, "CONCSETDWELLTIME ACTIVE MIN", 27) == 0) {
+		if (drv_cmd_validate(command, 27)) {
+			hdd_err("Invalid driver command");
+			retval = -EINVAL;
+			goto sme_config_free;
+		}
+
+		value = value + 28;
+		temp = kstrtou32(value, 10, &val);
+		if (temp != 0 || val < CFG_ACTIVE_MIN_CHANNEL_TIME_CONC_MIN ||
+		    val > CFG_ACTIVE_MIN_CHANNEL_TIME_CONC_MAX) {
+			hdd_err("argument passed for CONCSETDWELLTIME ACTIVE MIN is incorrect");
+			retval = -EFAULT;
+			goto sme_config_free;
+		}
+
+		p_cfg->nActiveMinChnTimeConc = val;
+		sme_config->csrConfig.nActiveMinChnTimeConc = val;
+		sme_update_config(hhal, sme_config);
+	} else if (strncmp(command, "CONCSETDWELLTIME PASSIVE MAX", 28) == 0) {
+		if (drv_cmd_validate(command, 28)) {
+			hdd_err("Invalid driver command");
+			retval = -EINVAL;
+			goto sme_config_free;
+		}
+
+		value = value + 29;
+		temp = kstrtou32(value, 10, &val);
+		if (temp != 0 || val < CFG_PASSIVE_MAX_CHANNEL_TIME_CONC_MIN ||
+		    val > CFG_PASSIVE_MAX_CHANNEL_TIME_CONC_MAX) {
+			hdd_err("Argument passed for CONCSETDWELLTIME PASSIVE MAX is incorrect");
+			retval = -EFAULT;
+			goto sme_config_free;
+		}
+
+		p_cfg->nPassiveMaxChnTimeConc = val;
+		sme_config->csrConfig.nPassiveMaxChnTimeConc = val;
+		sme_update_config(hhal, sme_config);
+	} else if (strncmp(command, "CONCSETDWELLTIME PASSIVE MIN", 28) == 0) {
+		if (drv_cmd_validate(command, 28)) {
+			hdd_err("Invalid driver command");
+			retval = -EINVAL;
+			goto sme_config_free;
+		}
+
+		value = value + 29;
+		temp = kstrtou32(value, 10, &val);
+		if (temp != 0 || val < CFG_PASSIVE_MIN_CHANNEL_TIME_CONC_MIN ||
+		    val > CFG_PASSIVE_MIN_CHANNEL_TIME_CONC_MAX) {
+			hdd_err("argument passed for SETDWELLTIME PASSIVE MIN is incorrect");
+			retval = -EFAULT;
+			goto sme_config_free;
+		}
+
+		p_cfg->nPassiveMinChnTimeConc = val;
+		sme_config->csrConfig.nPassiveMinChnTimeConc = val;
+		sme_update_config(hhal, sme_config);
+	} else {
+		retval = -EINVAL;
+	}
+
+sme_config_free:
+	qdf_mem_free(sme_config);
+	return retval;
+}
+#endif
+
 static void hdd_get_link_status_cb(uint8_t status, void *context)
 {
 	struct statsContext *pLinkContext;
@@ -3012,9 +3122,12 @@ static int drv_cmd_country(hdd_adapter_t *adapter,
 	QDF_STATUS status;
 	unsigned long rc;
 	char *country_code;
+#ifndef FEATURE_SUPPORT_LGE
 	int32_t cc_from_db;
+#endif
 
 	country_code = command + 8;
+#ifndef FEATURE_SUPPORT_LGE
 	if (!((country_code[0] == 'X' && country_code[1] == 'X') ||
 	    (country_code[0] == '0' && country_code[1] == '0'))) {
 		cc_from_db = cds_get_country_from_alpha2(country_code);
@@ -3024,6 +3137,7 @@ static int drv_cmd_country(hdd_adapter_t *adapter,
 			return -EINVAL;
 		}
 	}
+#endif
 
 	INIT_COMPLETION(adapter->change_country_code);
 
@@ -4738,6 +4852,17 @@ static int drv_cmd_set_dwell_time(hdd_adapter_t *adapter,
 	return hdd_set_dwell_time(adapter, command);
 }
 
+#ifdef WLAN_AP_STA_CONCURRENCY
+static int drv_cmd_conc_set_dwell_time(hdd_adapter_t *adapter,
+				       hdd_context_t *hdd_ctx,
+				       u8 *command,
+				       u8 command_len,
+				       hdd_priv_data_t *priv_data)
+{
+	return hdd_conc_set_dwell_time(hdd_ctx, command);
+}
+#endif
+
 static int drv_cmd_miracast(hdd_adapter_t *adapter,
 			    hdd_context_t *hdd_ctx,
 			    uint8_t *command,
@@ -5404,14 +5529,6 @@ static int drv_cmd_set_ccx_roam_scan_channels(hdd_adapter_t *adapter,
 		ret = -EINVAL;
 		goto exit;
 	}
-
-	if (!sme_validate_channel_list(hdd_ctx->hHal,
-	    ChannelList, numChannels)) {
-		hdd_err("List contains invalid channel(s)");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	status = sme_set_ese_roam_scan_channel_list(hdd_ctx->hHal,
 						    adapter->sessionId,
 						    ChannelList,
@@ -5576,7 +5693,7 @@ static int drv_cmd_ccx_beacon_req(hdd_adapter_t *adapter,
 {
 	int ret;
 	uint8_t *value = command;
-	tCsrEseBeaconReq eseBcnReq = {0};
+	tCsrEseBeaconReq eseBcnReq;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 
 	if (QDF_STA_MODE != adapter->device_mode) {
@@ -5594,10 +5711,6 @@ static int drv_cmd_ccx_beacon_req(hdd_adapter_t *adapter,
 
 	if (!hdd_conn_is_connected(WLAN_HDD_GET_STATION_CTX_PTR(adapter))) {
 		hdd_debug("Not associated");
-
-		if (!eseBcnReq.numBcnReqIe)
-			return -EINVAL;
-
 		hdd_indicate_ese_bcn_report_no_results(adapter,
 			eseBcnReq.bcnReq[0].measurementToken,
 			0x02, /* BIT(1) set for measurement done */
@@ -5763,7 +5876,7 @@ static int drv_cmd_set_mc_rate(hdd_adapter_t *adapter,
 {
 	int ret = 0;
 	uint8_t *value = command;
-	int targetRate = 0;
+	int targetRate;
 
 	/* input value is in units of hundred kbps */
 
@@ -6332,7 +6445,7 @@ static int hdd_driver_rxfilter_comand_handler(uint8_t *command,
 		value = command + 13;
 	ret = kstrtou8(value, 10, &type);
 	if (ret < 0) {
-		hdd_err("kstrtou8 failed invalid input value");
+		hdd_err("kstrtou8 failed invalid input value %d", type);
 		return -EINVAL;
 	}
 
@@ -6698,6 +6811,43 @@ static int drv_cmd_dummy(hdd_adapter_t *adapter,
 	return 0;
 }
 
+#ifdef FEATURE_SUPPORT_LGE
+extern void wlan_hdd_set_scan_suppress(unsigned long on_off);
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
+static int drv_cmd_set_scansuppress(hdd_adapter_t *adapter,
+			 hdd_context_t *hdd_ctx,
+			 uint8_t *command,
+			 uint8_t command_len,
+			 hdd_priv_data_t *priv_data)
+{
+	int ret;
+	unsigned long on_off = 0;
+	size_t len = 0;
+	hdd_err("[LGE_COMMAND]:%s: \"%s\"", adapter->dev->name, command);
+
+	len = strlen(command);
+	if (len != 18) {
+		hdd_err("Incorrect Strvalue");
+		return -EINVAL;
+	}
+
+	ret = kstrtoul(command + 17, 10, &on_off);
+	if (ret != 0) {
+		hdd_err("Error in conversion from int to str: %d", ret);
+		return -EINVAL;
+	}
+
+	if (on_off < 0 || on_off > 1) {
+		hdd_err("Incorrect Testvalue!!(%ld)", on_off);
+		return -EINVAL;
+	}
+
+	wlan_hdd_set_scan_suppress(on_off);
+	return 0;
+}
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
+#endif
+
 /*
  * handler for any unsupported wlan hdd driver command
  */
@@ -6902,6 +7052,8 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"COUNTRY",                   drv_cmd_country, true},
 	{"SETSUSPENDMODE",            drv_cmd_dummy, false},
 	{"SET_AP_WPS_P2P_IE",         drv_cmd_dummy, false},
+	{"BTCOEXSCAN",                drv_cmd_dummy, false},
+	{"RXFILTER",                  drv_cmd_dummy, false},
 	{"SETROAMTRIGGER",            drv_cmd_set_roam_trigger, true},
 	{"GETROAMTRIGGER",            drv_cmd_get_roam_trigger, false},
 	{"SETROAMSCANPERIOD",         drv_cmd_set_roam_scan_period, true},
@@ -6954,6 +7106,9 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"BTCOEXMODE",                drv_cmd_bt_coex_mode, true},
 	{"SCAN-ACTIVE",               drv_cmd_scan_active, false},
 	{"SCAN-PASSIVE",              drv_cmd_scan_passive, false},
+#ifdef WLAN_AP_STA_CONCURRENCY
+	{"CONCSETDWELLTIME",          drv_cmd_conc_set_dwell_time, true},
+#endif
 	{"GETDWELLTIME",              drv_cmd_get_dwell_time, false},
 	{"SETDWELLTIME",              drv_cmd_set_dwell_time, true},
 	{"MIRACAST",                  drv_cmd_miracast, true},
@@ -6997,12 +7152,12 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"CHANNEL_SWITCH",            drv_cmd_set_channel_switch, true},
 	{"SETANTENNAMODE",            drv_cmd_set_antenna_mode, true},
 	{"GETANTENNAMODE",            drv_cmd_get_antenna_mode, false},
-	/* Deprecated commands */
 	{"STOP",                      drv_cmd_dummy, false},
-	{"RXFILTER-START",            drv_cmd_dummy, false},
-	{"RXFILTER-STOP",             drv_cmd_dummy, false},
-	{"BTCOEXSCAN-START",          drv_cmd_dummy, false},
-	{"BTCOEXSCAN-STOP",           drv_cmd_dummy, false},
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
+	{"SET_SCANSUPPRESS",          drv_cmd_set_scansuppress, true}, //true or false??
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-06-12, moon-wifi@lge.com*/
+#endif
 };
 
 /**
@@ -7026,18 +7181,13 @@ static int hdd_drv_cmd_process(hdd_adapter_t *adapter,
 	const int cmd_num_total = ARRAY_SIZE(hdd_drv_cmds);
 	uint8_t *cmd_i = NULL;
 	hdd_drv_cmd_handler_t handler = NULL;
-	int len = 0, cmd_len = 0;
-	uint8_t *ptr;
+	int len = 0;
 	bool args;
 
 	if (!adapter || !cmd || !priv_data) {
 		hdd_err("at least 1 param is NULL");
 		return -EINVAL;
 	}
-
-	/* Calculate length of the first word */
-	ptr = strchrnul(cmd, ' ');
-	cmd_len = ptr - cmd;
 
 	hdd_ctx = (hdd_context_t *)adapter->pHddCtx;
 
@@ -7053,7 +7203,7 @@ static int hdd_drv_cmd_process(hdd_adapter_t *adapter,
 			return -EINVAL;
 		}
 
-		if (len == cmd_len && strncasecmp(cmd, cmd_i, len) == 0) {
+		if (strncasecmp(cmd, cmd_i, len) == 0) {
 			if (args && drv_cmd_validate(cmd, len))
 				return -EINVAL;
 

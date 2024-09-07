@@ -64,6 +64,57 @@ static const struct virtual_sensor_data qti_virtual_sensors[] = {
 				"cpu1-gold-usr"},
 		.logic = VIRT_MAXIMUM,
 	},
+#if defined(CONFIG_MACH_SDM845_JUDYLN)
+	/* -0.15*xo + 0.87*quiet + 6.85 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {-15, 87},
+		.avg_offset = 685000,
+		.avg_denominator = 100,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#elif defined(CONFIG_MACH_SDM845_JUDYP)
+	/* 0.39*xo + 0.51*quiet + 2.69 */
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {39, 51},
+		.avg_offset = 269000,
+		.avg_denominator = 100,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#elif defined(CONFIG_MACH_SDM845_JUDYPN)
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {0, 1},
+		.avg_offset = 0,
+		.avg_denominator = 1,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#else
+	{
+		.virt_zone_name = "vts-virt-therm",
+		.num_sensors = 2,
+		.sensor_names = {"xo-therm-adc",
+				"quiet-therm-adc"},
+		.coefficient_ct = 2,
+		.coefficients = {0, 1},
+		.avg_offset = 0,
+		.avg_denominator = 1,
+		.logic = VIRT_WEIGHTED_AVG,
+	},
+#endif
 };
 
 int qti_virtual_sensor_register(struct device *dev)

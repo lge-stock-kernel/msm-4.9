@@ -1068,25 +1068,6 @@ populate_dot11f_vht_caps(tpAniSirGlobal pMac,
 				VHT_TX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
 			pDot11f->rxHighSupDataRate =
 				VHT_RX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
-			if (!psessionEntry->ch_width &&
-			    !pMac->roam.configParam.enable_vht20_mcs9 &&
-			    ((pDot11f->txMCSMap & VHT_1x1_MCS_MASK) ==
-			     VHT_1x1_MCS9_MAP)) {
-				DISABLE_VHT_MCS_9(pDot11f->txMCSMap,
-						NSS_1x1_MODE);
-				DISABLE_VHT_MCS_9(pDot11f->rxMCSMap,
-						NSS_1x1_MODE);
-			}
-		} else {
-			if (!psessionEntry->ch_width &&
-			    !pMac->roam.configParam.enable_vht20_mcs9 &&
-			    ((pDot11f->txMCSMap & VHT_2x2_MCS_MASK) ==
-			     VHT_2x2_MCS9_MAP)) {
-				DISABLE_VHT_MCS_9(pDot11f->txMCSMap,
-						NSS_2x2_MODE);
-				DISABLE_VHT_MCS_9(pDot11f->rxMCSMap,
-						NSS_2x2_MODE);
-			}
 		}
 	}
 	lim_log_vht_cap(pMac, pDot11f);
@@ -4637,7 +4618,7 @@ sir_convert_addts_req2_struct(tpAniSirGlobal pMac,
 
 		if (addts.num_WMMTCLAS) {
 			j = (uint8_t) (pAddTs->numTclas + addts.num_WMMTCLAS);
-			if (SIR_MAC_TCLASIE_MAXNUM > j)
+			if (SIR_MAC_TCLASIE_MAXNUM < j)
 				j = SIR_MAC_TCLASIE_MAXNUM;
 
 			for (i = pAddTs->numTclas; i < j; ++i) {
@@ -4797,7 +4778,7 @@ sir_convert_addts_rsp2_struct(tpAniSirGlobal pMac,
 
 		if (addts.num_WMMTCLAS) {
 			j = (uint8_t) (pAddTs->numTclas + addts.num_WMMTCLAS);
-			if (SIR_MAC_TCLASIE_MAXNUM > j)
+			if (SIR_MAC_TCLASIE_MAXNUM < j)
 				j = SIR_MAC_TCLASIE_MAXNUM;
 
 			for (i = pAddTs->numTclas; i < j; ++i) {
@@ -5868,25 +5849,17 @@ tSirRetStatus populate_dot11f_assoc_res_wsc_ie(tpAniSirGlobal pMac,
 					       tDot11fIEWscAssocRes *pDot11f,
 					       tpSirAssocReq pRcvdAssocReq)
 {
-	uint32_t ret;
-	uint8_t *wscIe;
 	tDot11fIEWscAssocReq parsedWscAssocReq = { 0, };
+	uint8_t *wscIe;
 
-	wscIe = limGetWscIEPtr(pMac, pRcvdAssocReq->addIE.addIEdata,
+	wscIe =
+		limGetWscIEPtr(pMac, pRcvdAssocReq->addIE.addIEdata,
 			       pRcvdAssocReq->addIE.length);
 	if (wscIe != NULL) {
 		/* retreive WSC IE from given AssocReq */
-		ret = dot11f_unpack_ie_wsc_assoc_req(pMac,
-						     /* EID, length, OUI */
-						     wscIe + 2 + 4,
-						     /* length without OUI */
-						     wscIe[1] - 4,
-						     &parsedWscAssocReq, false);
-		if (!DOT11F_SUCCEEDED(ret)) {
-			pe_err("unpack failed, ret: %d", ret);
-			return eSIR_HAL_INPUT_INVALID;
-		}
-
+		dot11f_unpack_ie_wsc_assoc_req(pMac, wscIe + 2 + 4,     /* EID, length, OUI */
+					       wscIe[1] - 4, /* length without OUI */
+					       &parsedWscAssocReq, false);
 		pDot11f->present = 1;
 		/* version has to be 0x10 */
 		pDot11f->Version.present = 1;

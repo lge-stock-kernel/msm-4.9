@@ -653,7 +653,11 @@ struct sk_buff {
 	 * want to keep them across layers you have to do a skb_clone()
 	 * first. This is owned by whoever has the skb queued ATM.
 	 */
+#ifdef CONFIG_LGP_DATA_TCPIP_MPTCP
+	char			cb[80] __aligned(8);
+#else
 	char			cb[48] __aligned(8);
+#endif
 
 	unsigned long		_skb_refdst;
 	void			(*destructor)(struct sk_buff *skb);
@@ -2985,6 +2989,8 @@ static inline int __skb_grow_rcsum(struct sk_buff *skb, unsigned int len)
 		skb->ip_summed = CHECKSUM_NONE;
 	return __skb_grow(skb, len);
 }
+
+#define rb_to_skb(rb) rb_entry_safe(rb, struct sk_buff, rbnode)
 
 #define skb_queue_walk(queue, skb) \
 		for (skb = (queue)->next;					\

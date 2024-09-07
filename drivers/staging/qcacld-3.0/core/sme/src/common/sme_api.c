@@ -692,10 +692,8 @@ tListElem *csr_get_cmd_to_process(tpAniSirGlobal pMac, tDblLinkList *pList,
 		pCommand = GET_BASE_ADDR(pCurEntry, tSmeCmd, Link);
 
 		if (pCommand->sessionId != sessionId ||
-		    pCommand->command ==  eSmeCommandSetKey ||
-		    pCommand->command ==  eSmeCommandWmStatusChange) {
-			sme_debug("selected the command with different sessionId or cmd %d",
-				  pCommand->command);
+		    pCommand->command ==  eSmeCommandSetKey) {
+			sme_debug("selected the command with different sessionId or setkey");
 			return pCurEntry;
 		}
 
@@ -1359,7 +1357,6 @@ void sme_update_fine_time_measurement_capab(tHalHandle hal, uint8_t session_id,
 						uint32_t val)
 {
 	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hal);
-	QDF_STATUS status;
 
 	mac_ctx->fine_time_meas_cap = val;
 
@@ -1374,15 +1371,9 @@ void sme_update_fine_time_measurement_capab(tHalHandle hal, uint8_t session_id,
 	}
 
 	/* Inform this RRM IE change to FW */
-	status = sme_acquire_global_lock(&mac_ctx->sme);
-	if (QDF_IS_STATUS_SUCCESS(status)) {
-		csr_roam_offload_scan(mac_ctx, session_id,
+	csr_roam_offload_scan(mac_ctx, session_id,
 			ROAM_SCAN_OFFLOAD_UPDATE_CFG,
 			REASON_CONNECT_IES_CHANGED);
-		sme_release_global_lock(&mac_ctx->sme);
-	} else {
-		sme_err("Failed to acquire SME lock");
-	}
 }
 
 /**
@@ -1493,7 +1484,6 @@ QDF_STATUS sme_update_roam_params(tHalHandle hal,
 {
 	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hal);
 	struct roam_ext_params *roam_params_dst;
-	QDF_STATUS status;
 	uint8_t i;
 
 	roam_params_dst = &mac_ctx->roam.configParam.roam_params;
@@ -1558,18 +1548,9 @@ QDF_STATUS sme_update_roam_params(tHalHandle hal,
 	default:
 		break;
 	}
-
-	status = sme_acquire_global_lock(&mac_ctx->sme);
-	if (QDF_IS_STATUS_SUCCESS(status)) {
-		csr_roam_offload_scan(mac_ctx, session_id,
-				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-				      update_param);
-		sme_release_global_lock(&mac_ctx->sme);
-	} else {
-		sme_err("Failed to acquire SME lock");
-	}
-
-	return status;
+	csr_roam_offload_scan(mac_ctx, session_id, ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+			update_param);
+	return 0;
 }
 
 #ifdef WLAN_FEATURE_GTK_OFFLOAD
@@ -1958,7 +1939,6 @@ QDF_STATUS sme_update_is_ese_feature_enabled(tHalHandle hHal,
 			uint8_t sessionId, const bool isEseIniFeatureEnabled)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hHal);
-	QDF_STATUS status;
 
 	if (pMac->roam.configParam.isEseIniFeatureEnabled ==
 	    isEseIniFeatureEnabled) {
@@ -1981,18 +1961,11 @@ QDF_STATUS sme_update_is_ese_feature_enabled(tHalHandle hHal,
 	if (true == isEseIniFeatureEnabled)
 		sme_update_fast_transition_enabled(hHal, true);
 
-	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-		status = sme_acquire_global_lock(&pMac->sme);
-		if (QDF_IS_STATUS_SUCCESS(status)) {
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_ESE_INI_CFG_CHANGED);
-			sme_release_global_lock(&pMac->sme);
-		} else {
-			sme_err("Failed to acquire SME lock");
-			return status;
-		}
-	}
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled)
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_ESE_INI_CFG_CHANGED);
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -2278,7 +2251,10 @@ QDF_STATUS sme_set_ese_roam_scan_channel_list(tHalHandle hHal,
 
 	status = sme_acquire_global_lock(&pMac->sme);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
-		sme_err("Failed to acquire SME lock");
+		if (pMac->roam.configParam.isRoamOffloadScanEnabled)
+			csr_roam_offload_scan(pMac, sessionId,
+					ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+					REASON_CHANNEL_LIST_CHANGED);
 		return status;
 	}
 	if (NULL != curchnl_list_info->ChannelList) {
@@ -2305,13 +2281,11 @@ QDF_STATUS sme_set_ese_roam_scan_channel_list(tHalHandle hHal,
 			newChannelList, oldChannelList,
 			pNeighborRoamInfo->neighborRoamState);
 	}
-
+	sme_release_global_lock(&pMac->sme);
 	if (pMac->roam.configParam.isRoamOffloadScanEnabled)
 		csr_roam_offload_scan(pMac, sessionId,
 				ROAM_SCAN_OFFLOAD_UPDATE_CFG,
 				REASON_CHANNEL_LIST_CHANGED);
-
-	sme_release_global_lock(&pMac->sme);
 	return status;
 }
 
@@ -3327,15 +3301,13 @@ QDF_STATUS sme_scan_request(tHalHandle hal, uint8_t session_id,
 	}
 
 	if (!mac_ctx->scan.fScanEnable) {
-		sme_err_rate_limited(SME_SCAN_REJECT_RATE_LIMIT,
-				     "fScanEnable false");
+		sme_err("fScanEnable false");
 		return status;
 	}
 
 	scan_count = csr_ll_count(&mac_ctx->sme.smeScanCmdActiveList);
 	if (scan_count >= mac_ctx->scan.max_scan_count) {
-		sme_err_rate_limited(SME_SCAN_REJECT_RATE_LIMIT,
-				     "Max scan reached");
+		sme_err("Max scan reached");
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -6328,12 +6300,12 @@ QDF_STATUS sme_set_host_offload(tHalHandle hHal, uint8_t sessionId,
 }
 
 QDF_STATUS sme_conf_hw_filter_mode(tHalHandle hal, uint8_t session_id,
-				   uint8_t mode_bitmap, bool filter_enable)
+				   uint8_t mode_bitmap)
 {
 	tpAniSirGlobal pMac = PMAC_STRUCT(hal);
 	QDF_STATUS status;
 	tCsrRoamSession *session;
-	struct wmi_hw_filter_req_params *req;
+	struct hw_filter_request *req;
 	cds_msg_t msg;
 
 	status = sme_acquire_global_lock(&pMac->sme);
@@ -6356,8 +6328,6 @@ QDF_STATUS sme_conf_hw_filter_mode(tHalHandle hal, uint8_t session_id,
 		return QDF_STATUS_E_NOMEM;
 	}
 
-	req->vdev_id = session_id;
-	req->enable = filter_enable;
 	req->mode_bitmap = mode_bitmap;
 	qdf_copy_macaddr(&req->bssid, &session->connectedProfile.bssid);
 
@@ -8609,13 +8579,12 @@ QDF_STATUS sme_update_roam_scan_n_probes(tHalHandle hHal, uint8_t sessionId,
 			  "%s: gRoamScanNProbes is changed from %d to %d",
 			  __func__, pMac->roam.configParam.nProbes, nProbes);
 		pMac->roam.configParam.nProbes = nProbes;
-
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_NPROBES_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
+	}
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_NPROBES_CHANGED);
 	}
 	return status;
 }
@@ -8652,14 +8621,13 @@ QDF_STATUS sme_update_roam_scan_home_away_time(tHalHandle hHal,
 			  nRoamScanHomeAwayTime);
 		pMac->roam.configParam.nRoamScanHomeAwayTime =
 			nRoamScanHomeAwayTime;
-
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled &&
-						bSendOffloadCmd) {
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_HOME_AWAY_TIME_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
+	}
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled &&
+					bSendOffloadCmd) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_HOME_AWAY_TIME_CHANGED);
 	}
 	return status;
 }
@@ -8784,14 +8752,13 @@ QDF_STATUS sme_update_roam_rssi_diff(tHalHandle hHal, uint8_t sessionId,
 							     [sessionId].
 							    neighborRoamState));
 		pMac->roam.configParam.RoamRssiDiff = RoamRssiDiff;
-
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled)
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_RSSI_DIFF_CHANGED);
-
 		sme_release_global_lock(&pMac->sme);
 	}
+
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled)
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_RSSI_DIFF_CHANGED);
 	return status;
 }
 
@@ -8824,16 +8791,10 @@ QDF_STATUS sme_update_fils_config(tHalHandle hal, uint8_t session_id,
 
 	csr_update_fils_config(mac, session_id, src_profile);
 	if (csr_roamIsRoamOffloadEnabled(mac)) {
-		status = sme_acquire_global_lock(&mac->sme);
-		if (QDF_IS_STATUS_SUCCESS(status)) {
-			sme_debug("Updating fils config to fw");
-			csr_roam_offload_scan(mac, session_id,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_FILS_PARAMS_CHANGED);
-			sme_release_global_lock(&mac->sme);
-		} else {
-			sme_err("Failed to acquire SME lock");
-		}
+		sme_debug("Updating fils config to fw");
+		csr_roam_offload_scan(mac, session_id,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_FILS_PARAMS_CHANGED);
 	} else {
 		sme_info("LFR3 not enabled");
 		return QDF_STATUS_E_INVAL;
@@ -9739,14 +9700,13 @@ QDF_STATUS sme_set_neighbor_scan_refresh_period(tHalHandle hHal,
 		pNeighborRoamInfo->cfgParams.neighborResultsRefreshPeriod =
 			neighborScanResultsRefreshPeriod;
 
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-				ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-				REASON_NEIGHBOR_SCAN_REFRESH_PERIOD_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
 	}
-
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				   REASON_NEIGHBOR_SCAN_REFRESH_PERIOD_CHANGED);
+	}
 	return status;
 }
 
@@ -9863,15 +9823,13 @@ QDF_STATUS sme_update_empty_scan_refresh_period(tHalHandle hHal, uint8_t
 			nEmptyScanRefreshPeriod;
 		pNeighborRoamInfo->cfgParams.emptyScanRefreshPeriod =
 			nEmptyScanRefreshPeriod;
-
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-				ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-				REASON_EMPTY_SCAN_REF_PERIOD_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
 	}
-
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_EMPTY_SCAN_REF_PERIOD_CHANGED);
+	}
 	return status;
 }
 
@@ -9971,14 +9929,13 @@ QDF_STATUS sme_set_neighbor_scan_max_chan_time(tHalHandle hHal, uint8_t
 			nNeighborScanMaxChanTime;
 		pNeighborRoamInfo->cfgParams.maxChannelScanTime =
 			nNeighborScanMaxChanTime;
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_SCAN_CH_TIME_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
 	}
-
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_SCAN_CH_TIME_CHANGED);
+	}
 
 	return status;
 }
@@ -10199,13 +10156,12 @@ QDF_STATUS sme_set_neighbor_scan_period(tHalHandle hHal, uint8_t sessionId,
 			nNeighborScanPeriod;
 		pNeighborRoamInfo->cfgParams.neighborScanPeriod =
 			nNeighborScanPeriod;
-
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-					      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					      REASON_SCAN_HOME_TIME_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
+	}
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_SCAN_HOME_TIME_CHANGED);
 	}
 
 	return status;
@@ -10331,7 +10287,10 @@ QDF_STATUS sme_change_roam_scan_channel_list(tHalHandle hHal, uint8_t sessionId,
 	pNeighborRoamInfo = &pMac->roam.neighborRoamInfo[sessionId];
 	status = sme_acquire_global_lock(&pMac->sme);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
-		sme_err("Failed to acquire SME lock");
+		if (pMac->roam.configParam.isRoamOffloadScanEnabled)
+			csr_roam_offload_scan(pMac, sessionId,
+					ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+					REASON_CHANNEL_LIST_CHANGED);
 		return status;
 	}
 	chan_info = &pNeighborRoamInfo->cfgParams.channelInfo;
@@ -10367,13 +10326,12 @@ QDF_STATUS sme_change_roam_scan_channel_list(tHalHandle hHal, uint8_t sessionId,
 		"LFR set roam scan channels: %s, old: %s, state: %d",
 			newChannelList, oldChannelList,
 		pMac->roam.neighborRoamInfo[sessionId].neighborRoamState);
+	sme_release_global_lock(&pMac->sme);
 
 	if (pMac->roam.configParam.isRoamOffloadScanEnabled)
 		csr_roam_offload_scan(pMac, sessionId,
 				ROAM_SCAN_OFFLOAD_UPDATE_CFG,
 				REASON_CHANNEL_LIST_CHANGED);
-
-	sme_release_global_lock(&pMac->sme);
 	return status;
 }
 
@@ -13609,14 +13567,13 @@ QDF_STATUS sme_update_dfs_scan_mode(tHalHandle hHal, uint8_t sessionId,
 							    neighborRoamState));
 		pMac->roam.configParam.allowDFSChannelRoam =
 			allowDFSChannelRoam;
-		if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
-			csr_roam_offload_scan(pMac, sessionId,
-					ROAM_SCAN_OFFLOAD_UPDATE_CFG,
-					REASON_ROAM_DFS_SCAN_MODE_CHANGED);
-		}
 		sme_release_global_lock(&pMac->sme);
 	}
-
+	if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+		csr_roam_offload_scan(pMac, sessionId,
+				      ROAM_SCAN_OFFLOAD_UPDATE_CFG,
+				      REASON_ROAM_DFS_SCAN_MODE_CHANGED);
+	}
 
 	return status;
 }
@@ -15647,15 +15604,13 @@ QDF_STATUS sme_set_rssi_threshold_breached_cb(tHalHandle h_hal,
  * sme_set_nud_debug_stats_cb() - set nud debug stats callback
  * @hal: global hal handle
  * @cb: callback function pointer
- * @context: callback context
  *
- * This function stores nud debug stats callback function and context
+ * This function stores nud debug stats callback function.
  *
  * Return: QDF_STATUS enumeration.
  */
 QDF_STATUS sme_set_nud_debug_stats_cb(tHalHandle hal,
-			void (*cb)(void *, struct rsp_stats *, void *),
-			void *context)
+				void (*cb)(void *, struct rsp_stats *))
 {
 	QDF_STATUS status  = QDF_STATUS_SUCCESS;
 	tpAniSirGlobal mac;
@@ -15676,7 +15631,6 @@ QDF_STATUS sme_set_nud_debug_stats_cb(tHalHandle hal,
 	}
 
 	mac->sme.get_arp_stats_cb = cb;
-	mac->sme.get_arp_stats_context = context;
 	sme_release_global_lock(&mac->sme);
 	return status;
 }
@@ -16248,13 +16202,12 @@ QDF_STATUS sme_update_roam_scan_hi_rssi_scan_params(tHalHandle hal_handle,
 			status = QDF_STATUS_E_INVAL;
 			break;
 		}
-
-		if (mac_ctx->roam.configParam.isRoamOffloadScanEnabled &&
-		    status == QDF_STATUS_SUCCESS) {
-			csr_roam_offload_scan(mac_ctx, session_id,
-				ROAM_SCAN_OFFLOAD_UPDATE_CFG, reason);
-		}
 		sme_release_global_lock(&mac_ctx->sme);
+	}
+	if (mac_ctx->roam.configParam.isRoamOffloadScanEnabled &&
+		status == QDF_STATUS_SUCCESS) {
+		csr_roam_offload_scan(mac_ctx, session_id,
+			ROAM_SCAN_OFFLOAD_UPDATE_CFG, reason);
 	}
 
 	return status;
@@ -17248,18 +17201,11 @@ QDF_STATUS sme_update_sta_roam_policy(tHalHandle hal_handle,
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_ERROR,
 			FL("failed to update the supported channel list"));
 	}
-
-	if (mac_ctx->roam.configParam.isRoamOffloadScanEnabled) {
-		status = sme_acquire_global_lock(&mac_ctx->sme);
-		if (QDF_IS_STATUS_SUCCESS(status)) {
-			csr_roam_offload_scan(mac_ctx, session_id,
+	if (mac_ctx->roam.configParam.isRoamOffloadScanEnabled)
+		csr_roam_offload_scan(mac_ctx, session_id,
 				ROAM_SCAN_OFFLOAD_UPDATE_CFG,
 				REASON_ROAM_SCAN_STA_ROAM_POLICY_CHANGED);
-			sme_release_global_lock(&mac_ctx->sme);
-		} else {
-			sme_err("Failed to acquire SME lock");
-		}
-	}
+
 	qdf_mem_free(sme_config);
 	return status;
 }
@@ -18940,50 +18886,4 @@ QDF_STATUS sme_destroy_config(tHalHandle hal)
 	status = sme_destroy_action_oui_info(mac_ctx);
 
 	return status;
-}
-
-bool sme_is_sta_key_exchange_in_progress(tHalHandle hal, uint8_t session_id)
-{
-	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hal);
-
-	if (!CSR_IS_SESSION_VALID(mac_ctx, session_id)) {
-		sme_err("Invalid session id: %d", session_id);
-		return false;
-	}
-
-	return CSR_IS_WAIT_FOR_KEY(mac_ctx, session_id);
-}
-
-bool sme_validate_channel_list(tHalHandle hal,
-				      uint8_t *chan_list,
-				      uint8_t num_channels)
-{
-	tpAniSirGlobal mac_ctx = PMAC_STRUCT(hal);
-	uint8_t i = 0;
-	uint8_t j;
-	bool found;
-	tCsrChannel *ch_lst_info = &mac_ctx->scan.base_channels;
-
-	if (!chan_list || !num_channels) {
-		sme_err("Chan list empty %pK or num_channels is 0", chan_list);
-		return false;
-	}
-
-	while (i < num_channels) {
-		found = false;
-		for (j = 0; j < ch_lst_info->numChannels; j++) {
-			if (ch_lst_info->channelList[j] == chan_list[i]) {
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			sme_debug("Invalid channel %d", chan_list[i]);
-			return false;
-		}
-
-		i++;
-	}
-	return true;
 }

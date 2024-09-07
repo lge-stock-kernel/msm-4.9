@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -751,6 +751,11 @@ static int hfi_fill_codec_info(u8 *data_ptr,
 				vidc_get_hal_codec((1 << i) & codecs);
 			capability->domain =
 				vidc_get_hal_domain(HFI_VIDEO_DOMAIN_DECODER);
+            if (codec_count == VIDC_MAX_DECODE_SESSIONS) {
+                dprintk(VIDC_ERR,
+                    "Max supported decoder sessions reached");
+                break;
+            }
 		}
 	}
 	codecs = sys_init_done->enc_codec_supported;
@@ -762,6 +767,11 @@ static int hfi_fill_codec_info(u8 *data_ptr,
 				vidc_get_hal_codec((1 << i) & codecs);
 			capability->domain =
 				vidc_get_hal_domain(HFI_VIDEO_DOMAIN_ENCODER);
+            if (codec_count == VIDC_MAX_SESSIONS) {
+                 dprintk(VIDC_ERR,
+                     "Max supported sessions reached");
+                 break;
+             }
 		}
 	}
 	sys_init_done->codec_count = codec_count;
@@ -851,36 +861,6 @@ static int copy_caps_to_sessions(struct hfi_capability_supported *cap,
 
 		for (j = 0; j < num_caps; j++)
 			copy_cap_prop(&cap[j], capability);
-	}
-
-	return 0;
-}
-
-static int copy_nal_stream_format_caps_to_sessions(u32 nal_stream_format_value,
-		struct msm_vidc_capability *capabilities, u32 num_sessions,
-		u32 codecs, u32 domain) {
-	u32 i = 0;
-	struct msm_vidc_capability *capability;
-	u32 sess_codec;
-	u32 sess_domain;
-
-	for (i = 0; i < num_sessions; i++) {
-		sess_codec = 0;
-		sess_domain = 0;
-		capability = &capabilities[i];
-
-		if (capability->codec)
-			sess_codec =
-				vidc_get_hfi_codec(capability->codec);
-		if (capability->domain)
-			sess_domain =
-				vidc_get_hfi_domain(capability->domain);
-
-		if (!(sess_codec & codecs && sess_domain & domain))
-			continue;
-
-		capability->nal_stream_format.nal_stream_format_supported =
-				nal_stream_format_value;
 	}
 
 	return 0;
@@ -1014,15 +994,6 @@ static enum vidc_status hfi_parse_init_done_properties(
 		}
 		case HFI_PROPERTY_PARAM_NAL_STREAM_FORMAT_SUPPORTED:
 		{
-			struct hfi_nal_stream_format_supported *prop =
-				(struct hfi_nal_stream_format_supported *)
-					(data_ptr + next_offset);
-
-			copy_nal_stream_format_caps_to_sessions(
-					prop->nal_stream_format_supported,
-					capabilities, num_sessions,
-					codecs, domain);
-
 			next_offset +=
 				sizeof(struct hfi_nal_stream_format_supported);
 			num_properties--;

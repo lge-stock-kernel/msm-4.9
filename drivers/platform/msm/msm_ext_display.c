@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,6 +11,7 @@
  */
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
+#define DEBUG
 
 #include <linux/slab.h>
 #include <linux/bitops.h>
@@ -169,7 +170,6 @@ static int msm_ext_disp_process_audio(struct msm_ext_disp *ext_disp,
 	}
 
 	state = ext_disp->audio_sdev.state;
-
 	index = msm_ext_disp_find_index(&ext_disp->audio_sdev, type);
 	if (index < 0 || index >= ext_disp->audio_sdev.max_supported) {
 		pr_err("invalid index\n");

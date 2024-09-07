@@ -144,14 +144,13 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 		for (i = 0; i < flash_ctrl->torch_num_sources; i++) {
 			if (flash_ctrl->torch_trigger[i]) {
 				max_current = soc_private->torch_max_current[i];
-
 				if (flash_data->led_current_ma[i] <=
 					max_current)
 					curr = flash_data->led_current_ma[i];
 				else
 					curr = soc_private->torch_op_current[i];
 
-				CAM_DBG(CAM_FLASH,
+				CAM_ERR(CAM_FLASH,
 					"Led_Current[%d] = %d", i, curr);
 				cam_res_mgr_led_trigger_event(
 					flash_ctrl->torch_trigger[i],
@@ -163,13 +162,21 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 			if (flash_ctrl->flash_trigger[i]) {
 				max_current = soc_private->flash_max_current[i];
 
+				/*LGE_CHANGE_S, flash current set to 800mA for pre-flash, hyunuk.park@lge.com*/
+				#ifdef QCT_ORIGINAL
 				if (flash_data->led_current_ma[i] <=
 					max_current)
 					curr = flash_data->led_current_ma[i];
 				else
 					curr = soc_private->flash_op_current[i];
+				#else
+				curr = soc_private->flash_op_current[i];
+				#endif
+				CAM_ERR(CAM_FLASH, "led_current_ma[%d] = %d", i, flash_data->led_current_ma[i]);
+				CAM_ERR(CAM_FLASH, "flash_op_current[%d] = %d", i, soc_private->flash_op_current[i]);
+				/*LGE_CHANGE_E, flash current set to 800mA for pre-flash, hyunuk.park@lge.com*/
 
-				CAM_DBG(CAM_FLASH, "LED flash_current[%d]: %d",
+				CAM_ERR(CAM_FLASH, "LED flash_current[%d]: %d",
 					i, curr);
 				cam_res_mgr_led_trigger_event(
 					flash_ctrl->flash_trigger[i],
@@ -284,8 +291,8 @@ static int delete_req(struct cam_flash_ctrl *fctrl, uint64_t req_id)
 			for (i = 0; i < flash_data->cmn_attr.count; i++)
 				flash_data->led_current_ma[i] = 0;
 		} else {
-			fctrl->flash_init_setting.cmn_attr.is_settings_valid
-				= false;
+			fctrl->flash_init_setting.cmn_attr.
+				is_settings_valid = false;
 		}
 	} else {
 		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
@@ -513,7 +520,7 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 	uint64_t generic_ptr;
 	uint32_t *cmd_buf =  NULL;
 	uint32_t *offset = NULL;
-	uint32_t frm_offset = 0;
+	uint32_t frame_offset = 0;
 	size_t len_of_buffer;
 	struct cam_control *ioctl_ctrl = NULL;
 	struct cam_packet *csl_packet = NULL;
@@ -525,7 +532,6 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 	struct cam_flash_set_rer *flash_rer_info = NULL;
 	struct cam_flash_set_on_off *flash_operation_info = NULL;
 	struct cam_flash_query_curr *flash_query_info = NULL;
-	struct cam_flash_frame_setting *flash_data = NULL;
 
 	if (!fctrl || !arg) {
 		CAM_ERR(CAM_FLASH, "fctrl/arg is NULL");
@@ -617,19 +623,25 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 	case CAM_FLASH_PACKET_OPCODE_SET_OPS: {
 		offset = (uint32_t *)((uint8_t *)&csl_packet->payload +
 			csl_packet->cmd_buf_offset);
-		frm_offset = csl_packet->header.request_id %
+		frame_offset = csl_packet->header.request_id %
 			MAX_PER_FRAME_ARRAY;
-		flash_data = &fctrl->per_frame[frm_offset];
-
-		if (flash_data->cmn_attr.is_settings_valid == true) {
-			flash_data->cmn_attr.request_id = 0;
-			flash_data->cmn_attr.is_settings_valid = false;
-			for (i = 0; i < flash_data->cmn_attr.count; i++)
-				flash_data->led_current_ma[i] = 0;
+		if (fctrl->per_frame[frame_offset].cmn_attr.is_settings_valid
+			== true) {
+			fctrl->per_frame[frame_offset].cmn_attr.request_id = 0;
+			fctrl->per_frame[frame_offset].
+				cmn_attr.is_settings_valid = false;
+			for (i = 0;
+			i < fctrl->per_frame[frame_offset].cmn_attr.count;
+			i++) {
+				fctrl->per_frame[frame_offset].
+					led_current_ma[i] = 0;
+			}
 		}
 
-		flash_data->cmn_attr.request_id = csl_packet->header.request_id;
-		flash_data->cmn_attr.is_settings_valid = true;
+		fctrl->per_frame[frame_offset].cmn_attr.request_id =
+			csl_packet->header.request_id;
+		fctrl->per_frame[frame_offset].cmn_attr.is_settings_valid =
+			true;
 		cmd_desc = (struct cam_cmd_buf_desc *)(offset);
 		rc = cam_mem_get_cpu_buf(cmd_desc->mem_handle,
 			(uint64_t *)&generic_ptr, &len_of_buffer);
@@ -650,7 +662,8 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 					CAM_FLASH_STATE_ACQUIRE)) {
 				CAM_WARN(CAM_FLASH,
 					"Rxed Flash fire ops without linking");
-				flash_data->cmn_attr.is_settings_valid = false;
+				fctrl->per_frame[frame_offset].
+					cmn_attr.is_settings_valid = false;
 				return 0;
 			}
 
@@ -662,12 +675,16 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				return -EINVAL;
 			}
 
-			flash_data->opcode = flash_operation_info->opcode;
-			flash_data->cmn_attr.count =
+			fctrl->per_frame[frame_offset].opcode =
+				flash_operation_info->opcode;
+			fctrl->per_frame[frame_offset].cmn_attr.count =
 				flash_operation_info->count;
-			for (i = 0; i < flash_operation_info->count; i++)
-				flash_data->led_current_ma[i]
-				= flash_operation_info->led_current_ma[i];
+			for (i = 0;
+				i < flash_operation_info->count; i++)
+				fctrl->per_frame[frame_offset].
+					led_current_ma[i]
+					= flash_operation_info->
+					led_current_ma[i];
 			}
 			break;
 		default:
@@ -772,10 +789,8 @@ int cam_flash_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			(fctrl->flash_state == CAM_FLASH_STATE_ACQUIRE)) {
 			CAM_WARN(CAM_FLASH,
 				"Rxed NOP packets without linking");
-			frm_offset = csl_packet->header.request_id %
-				MAX_PER_FRAME_ARRAY;
-			fctrl->per_frame[frm_offset].cmn_attr.is_settings_valid
-				= false;
+			fctrl->per_frame[frame_offset].
+				cmn_attr.is_settings_valid = false;
 			return 0;
 		}
 

@@ -2034,7 +2034,7 @@ void ol_txrx_pdev_pre_detach(ol_txrx_pdev_handle pdev, int force)
  */
 void ol_txrx_pdev_detach(ol_txrx_pdev_handle pdev)
 {
-	struct ol_txrx_stats_req_internal *req, *temp_req;
+	struct ol_txrx_stats_req_internal *req;
 	int i = 0;
 
 	/*checking to ensure txrx pdev structure is not NULL */
@@ -2050,7 +2050,7 @@ void ol_txrx_pdev_detach(ol_txrx_pdev_handle pdev)
 			"Warning: the txrx req list is not empty, depth=%d\n",
 			pdev->req_list_depth
 			);
-	TAILQ_FOREACH_SAFE(req, &pdev->req_list, req_list_elem, temp_req) {
+	TAILQ_FOREACH(req, &pdev->req_list, req_list_elem) {
 		TAILQ_REMOVE(&pdev->req_list, req, req_list_elem);
 		pdev->req_list_depth--;
 		ol_txrx_err(
@@ -2237,7 +2237,6 @@ void ol_txrx_vdev_register(ol_txrx_vdev_handle vdev,
 
 	vdev->osif_dev = osif_vdev;
 	vdev->rx = txrx_ops->rx.rx;
-	vdev->stats_rx = txrx_ops->rx.stats_rx;
 	txrx_ops->tx.tx = ol_tx_data;
 }
 
@@ -2284,7 +2283,7 @@ void ol_txrx_set_drop_unenc(ol_txrx_vdev_handle vdev, uint32_t val)
 	vdev->drop_unenc = val;
 }
 
-#if defined(CONFIG_HL_SUPPORT) || defined(QCA_LL_LEGACY_TX_FLOW_CONTROL)
+#if defined(CONFIG_HL_SUPPORT)
 
 static void
 ol_txrx_tx_desc_reset_vdev(ol_txrx_vdev_handle vdev)
@@ -2303,31 +2302,14 @@ ol_txrx_tx_desc_reset_vdev(ol_txrx_vdev_handle vdev)
 }
 
 #else
-#ifdef QCA_LL_TX_FLOW_CONTROL_V2
-static void ol_txrx_tx_desc_reset_vdev(ol_txrx_vdev_handle vdev)
+
+static void
+ol_txrx_tx_desc_reset_vdev(ol_txrx_vdev_handle vdev)
 {
-	struct ol_txrx_pdev_t *pdev = vdev->pdev;
-	struct ol_tx_flow_pool_t *pool;
-	int i;
-	struct ol_tx_desc_t *tx_desc;
 
-	qdf_spin_lock_bh(&pdev->tx_desc.flow_pool_list_lock);
-	for (i = 0; i < pdev->tx_desc.pool_size; i++) {
-		tx_desc = ol_tx_desc_find(pdev, i);
-		if (!qdf_atomic_read(&tx_desc->ref_cnt))
-			/* not in use */
-			continue;
-
-		pool = tx_desc->pool;
-		qdf_spin_lock_bh(&pool->flow_pool_lock);
-		if (tx_desc->vdev == vdev)
-			tx_desc->vdev = NULL;
-		qdf_spin_unlock_bh(&pool->flow_pool_lock);
-	}
-	qdf_spin_unlock_bh(&pdev->tx_desc.flow_pool_list_lock);
 }
-#endif /* QCA_LL_TX_FLOW_CONTROL_V2 */
-#endif /* CONFIG_HL_SUPPORT */
+
+#endif
 
 /**
  * ol_txrx_vdev_detach - Deallocate the specified data virtual
@@ -3542,6 +3524,9 @@ void peer_unmap_timer_handler(void *data)
 		 peer->mac_addr.raw[4], peer->mac_addr.raw[5]);
 	if (!cds_is_driver_recovering() && !cds_is_fw_down()) {
 		wma_peer_debug_dump();
+		// [LGE_CHANGE_S] 2018-04-20, add debugging log
+		WMA_LOGE("%s: Recovery is required. Let's start!", __func__);
+		// [LGE_CHANGE_E] 2018-04-20, add debugging log
 		if (cds_is_self_recovery_enabled())
 			cds_trigger_recovery(CDS_PEER_UNMAP_TIMEDOUT);
 		else

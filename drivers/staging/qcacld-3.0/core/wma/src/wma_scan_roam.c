@@ -949,7 +949,6 @@ QDF_STATUS wma_roam_scan_offload_mode(tp_wma_handle wma_handle,
 		params->fw_pmksa_cache = roam_req->pmkid_modes.fw_pmksa_cache;
 #endif
 		params->is_ese_assoc = roam_req->IsESEAssoc;
-		params->is_11r_assoc = roam_req->is_11r_assoc;
 		params->mdid.mdie_present = roam_req->MDID.mdiePresent;
 		params->mdid.mobility_domain = roam_req->MDID.mobilityDomain;
 		params->assoc_ie_length = roam_req->assoc_ie.length;
@@ -2571,16 +2570,7 @@ static int wma_fill_roam_synch_buffer(tp_wma_handle wma,
 
 	fils_info = (wmi_roam_fils_synch_tlv_param *)
 			(param_buf->roam_fils_synch_info);
-	if (fils_info) {
-		if ((fils_info->kek_len > SIR_KEK_KEY_LEN_FILS) ||
-		    (fils_info->pmk_len > SIR_PMK_LEN)) {
-			WMA_LOGE("%s: Invalid kek_len %d or pmk_len %d",
-				 __func__,
-				 fils_info->kek_len,
-				 fils_info->pmk_len);
-			return -EINVAL;
-		}
-
+	if (param_buf->roam_fils_synch_info) {
 		roam_synch_ind_ptr->kek_len = fils_info->kek_len;
 		qdf_mem_copy(roam_synch_ind_ptr->kek, fils_info->kek,
 			     fils_info->kek_len);
@@ -2746,12 +2736,6 @@ int wma_roam_synch_event_handler(void *handle, uint8_t *event,
 		goto cleanup_label;
 	}
 
-	if (synch_event->vdev_id >= wma->max_bssid) {
-		WMA_LOGE("%s: received invalid vdev_id %d",
-				__func__, synch_event->vdev_id);
-		return status;
-	}
-
 	if (synch_event->bcn_probe_rsp_len >
 	    param_buf->num_bcn_probe_rsp_frame ||
 	    synch_event->reassoc_req_len >
@@ -2762,6 +2746,11 @@ int wma_roam_synch_event_handler(void *handle, uint8_t *event,
 			synch_event->bcn_probe_rsp_len,
 			synch_event->reassoc_req_len,
 			synch_event->reassoc_rsp_len);
+		goto cleanup_label;
+	}
+	if (synch_event->vdev_id >= wma->max_bssid) {
+		WMA_LOGE("%s: received invalid vdev_id %d",
+			 __func__, synch_event->vdev_id);
 		goto cleanup_label;
 	}
 
@@ -3819,7 +3808,7 @@ QDF_STATUS wma_pno_start(tp_wma_handle wma, tpSirPNOScanReq pno)
 			pno->aNetworks[i].ssId.length;
 		qdf_mem_copy(params->aNetworks[i].ssid.mac_ssid,
 			pno->aNetworks[i].ssId.ssId,
-				pno->aNetworks[i].ssId.length);
+				WMI_MAC_MAX_SSID_LENGTH);
 	}
 
 	params->enable_pno_scan_randomization =
@@ -5252,10 +5241,6 @@ int wma_extscan_change_results_event_handler(void *handle,
 		WMA_LOGE("%s: Results invalid", __func__);
 		return -EINVAL;
 	}
-	if (numap > param_buf->num_bssid_signal_descriptor_list) {
-		WMA_LOGE("%s: Invalid num of entries in page: %d", __func__, numap);
-		return -EINVAL;
-	}
 	for (i = 0; i < numap; i++) {
 		if (src_chglist->num_rssi_samples > (UINT_MAX - rssi_num)) {
 			WMA_LOGE("%s: Invalid num of rssi samples %d numap %d rssi_num %d",
@@ -5361,8 +5346,6 @@ int wma_passpoint_match_event_handler(void *handle,
 	struct wifi_passpoint_match  *dest_match;
 	tSirWifiScanResult      *dest_ap;
 	uint8_t *buf_ptr;
-	uint32_t buf_len = 0;
-	bool excess_data = false;
 	tpAniSirGlobal mac = cds_get_context(QDF_MODULE_ID_PE);
 
 	if (!mac) {
@@ -5382,26 +5365,13 @@ int wma_passpoint_match_event_handler(void *handle,
 	event = param_buf->fixed_param;
 	buf_ptr = (uint8_t *)param_buf->fixed_param;
 
-	do {
-		if (event->ie_length > (WMI_SVC_MSG_MAX_SIZE)) {
-			excess_data = true;
-			break;
-		} else {
-			buf_len = event->ie_length;
-		}
-
-		if (event->anqp_length > (WMI_SVC_MSG_MAX_SIZE)) {
-			excess_data = true;
-			break;
-		} else {
-			buf_len += event->anqp_length;
-		}
-
-	} while (0);
-
-	if (excess_data || buf_len > (WMI_SVC_MSG_MAX_SIZE - sizeof(*event)) ||
-	    buf_len > (WMI_SVC_MSG_MAX_SIZE - sizeof(*dest_match)) ||
-	    (event->ie_length + event->anqp_length) > param_buf->num_bufp) {
+	/*
+	 * All the below lengths are UINT32 and summing up and checking
+	 * against a constant should not be an issue.
+	 */
+	if ((sizeof(*event) + event->ie_length + event->anqp_length) >
+	     WMI_SVC_MSG_MAX_SIZE ||
+	     (event->ie_length + event->anqp_length) > param_buf->num_bufp) {
 		WMA_LOGE("IE Length: %u or ANQP Length: %u is huge, num_bufp: %u",
 			event->ie_length, event->anqp_length,
 			param_buf->num_bufp);
@@ -5414,8 +5384,8 @@ int wma_passpoint_match_event_handler(void *handle,
 		event->ssid.ssid_len = SIR_MAC_MAX_SSID_LENGTH;
 	}
 
-	dest_match = qdf_mem_malloc(sizeof(*dest_match) + buf_len);
-
+	dest_match = qdf_mem_malloc(sizeof(*dest_match) +
+				event->ie_length + event->anqp_length);
 	if (!dest_match) {
 		WMA_LOGE("%s: qdf_mem_malloc failed", __func__);
 		return -EINVAL;
@@ -6302,7 +6272,7 @@ QDF_STATUS wma_set_epno_network_list(tp_wma_handle wma,
 					req->networks[i].ssid.length;
 			qdf_mem_copy(params->networks[i].ssid.mac_ssid,
 					req->networks[i].ssid.ssId,
-					req->networks[i].ssid.length);
+					WMI_MAC_MAX_SSID_LENGTH);
 		}
 	}
 

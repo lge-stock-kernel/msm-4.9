@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,6 +13,9 @@
 #ifndef __FG_CORE_H__
 #define __FG_CORE_H__
 
+#ifdef CONFIG_LGE_PM
+#include <linux/alarmtimer.h>
+#endif
 #include <linux/atomic.h>
 #include <linux/bitops.h>
 #include <linux/debugfs.h>
@@ -97,6 +100,9 @@ enum fg_debug_flag {
 	FG_BUS_READ		= BIT(6), /* Show REGMAP reads */
 	FG_CAP_LEARN		= BIT(7), /* Show capacity learning */
 	FG_TTF			= BIT(8), /* Show time to full */
+#ifdef CONFIG_LGE_PM_DEBUG
+	FG_LGE			= BIT(9),
+#endif
 };
 
 /* SRAM access */
@@ -174,14 +180,18 @@ enum fg_sram_param_id {
 	FG_SRAM_DELTA_BSOC_THR,
 	FG_SRAM_RECHARGE_SOC_THR,
 	FG_SRAM_RECHARGE_VBATT_THR,
-	FG_SRAM_KI_COEFF_LOW_DISCHG,
 	FG_SRAM_KI_COEFF_MED_DISCHG,
 	FG_SRAM_KI_COEFF_HI_DISCHG,
-	FG_SRAM_KI_COEFF_HI_CHG,
 	FG_SRAM_KI_COEFF_FULL_SOC,
 	FG_SRAM_ESR_TIGHT_FILTER,
 	FG_SRAM_ESR_BROAD_FILTER,
 	FG_SRAM_SLOPE_LIMIT,
+#ifdef CONFIG_LGE_PM
+	FG_SRAM_SYS_STANDBY_CURR,
+	FG_SRAM_KI_COEFF_LOW_DISCHG,
+	FG_SRAM_KI_CURR_LOWTH_DISCHG,
+	FG_SRAM_KI_CURR_HIGHTH_DISCHG,
+#endif
 	FG_SRAM_MAX,
 };
 
@@ -241,6 +251,15 @@ enum slope_limit_status {
 	SLOPE_LIMIT_NUM_COEFFS,
 };
 
+#ifdef CONFIG_LGE_PM
+#define MAX_ESR_RT_FILTER_LEVEL		3
+enum esr_filter_status {
+	ROOM_TEMP = 0,
+	LOW_TEMP,
+	RELAX_TEMP,
+};
+#endif
+
 enum esr_timer_config {
 	TIMER_RETRY = 0,
 	TIMER_MAX,
@@ -287,15 +306,25 @@ struct fg_dt_props {
 	int	esr_broad_flt_upct;
 	int	esr_tight_lt_flt_upct;
 	int	esr_broad_lt_flt_upct;
+#ifdef CONFIG_LGE_PM
+	int	esr_flt_rt_switch_temp[MAX_ESR_RT_FILTER_LEVEL];
+	int	esr_flt_rt_duration[MAX_ESR_RT_FILTER_LEVEL];
+	int	esr_tight_rt_flt_upct;
+	int	esr_broad_rt_flt_upct;
+	int	sys_standby_curr_ma;
+#endif
 	int	slope_limit_temp;
 	int	esr_pulse_thresh_ma;
 	int	esr_meas_curr_ma;
 	int	bmd_en_delay_ms;
 	int	ki_coeff_full_soc_dischg;
-	int	ki_coeff_low_dischg;
-	int	ki_coeff_hi_chg;
 	int	jeita_thresholds[NUM_JEITA_LEVELS];
 	int	ki_coeff_soc[KI_COEFF_SOC_LEVELS];
+#ifdef CONFIG_LGE_PM
+	int	ki_coeff_low_dischg[KI_COEFF_SOC_LEVELS];
+	int	ki_curr_lowth_dischg;
+	int	ki_curr_highth_dischg;
+#endif
 	int	ki_coeff_med_dischg[KI_COEFF_SOC_LEVELS];
 	int	ki_coeff_hi_dischg[KI_COEFF_SOC_LEVELS];
 	int	slope_limit_coeffs[SLOPE_LIMIT_NUM_COEFFS];
@@ -445,8 +474,16 @@ struct fg_chip {
 	int			delta_soc;
 	int			last_msoc;
 	int			last_recharge_volt_mv;
+
+#ifdef CONFIG_LGE_PM
+	int			delta_temp_irq_count;
+#endif
+
 	int			esr_timer_charging_default[NUM_ESR_TIMERS];
 	enum slope_limit_status	slope_limit_sts;
+#ifdef CONFIG_LGE_PM
+	enum esr_filter_status	esr_flt_sts;
+#endif
 	bool			profile_available;
 	bool			profile_loaded;
 	bool			battery_missing;
@@ -468,6 +505,12 @@ struct fg_chip {
 	struct work_struct	status_change_work;
 	struct delayed_work	ttf_work;
 	struct delayed_work	sram_dump_work;
+#ifdef CONFIG_LGE_PM
+	int				esr_flt_rt_lvl;
+	struct work_struct	esr_filter_work;
+	struct alarm		esr_filter_alarm;
+	ktime_t			last_delta_temp_time;
+#endif
 	struct delayed_work	pl_enable_work;
 };
 

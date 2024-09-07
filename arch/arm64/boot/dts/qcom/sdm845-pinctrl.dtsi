@@ -2110,6 +2110,7 @@
 			};
 		};
 
+		/* Pull Up BT TxD only for Judy SE2.0 */
 		qupv3_se6_4uart_pins: qupv3_se6_4uart_pins {
 			qupv3_se6_ctsrx: qupv3_se6_ctsrx {
 				mux {
@@ -2136,6 +2137,7 @@
 					bias-pull-down;
 				};
 			};
+
 			qupv3_se6_tx: qupv3_se6_tx {
 				mux {
 					pins = "gpio47";
@@ -2150,6 +2152,39 @@
 			};
 		};
 
+/*
+		qupv3_se6_4uart_pins: qupv3_se6_4uart_pins {
+			qupv3_se6_4uart_active: qupv3_se6_4uart_active {
+				mux {
+					pins = "gpio45", "gpio46", "gpio47",
+								"gpio48";
+					function = "qup6";
+				};
+
+				config {
+					pins = "gpio45", "gpio46", "gpio47",
+								"gpio48";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
+			qupv3_se6_4uart_sleep: qupv3_se6_4uart_sleep {
+				mux {
+					pins = "gpio45", "gpio46", "gpio47",
+								"gpio48";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio45", "gpio46", "gpio47",
+								"gpio48";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+		};
+*/
 		qupv3_se6_spi_pins: qupv3_se6_spi_pins {
 			qupv3_se6_spi_active: qupv3_se6_spi_active {
 				mux {

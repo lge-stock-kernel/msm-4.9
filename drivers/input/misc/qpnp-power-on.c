@@ -33,6 +33,10 @@
 #include <linux/input/qpnp-power-on.h>
 #include <linux/power_supply.h>
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+#include <soc/qcom/lge/lge_handle_panic.h>
+#endif
+
 #define PMIC_VER_8941           0x01
 #define PMIC_VERSION_REG        0x0105
 #define PMIC_VERSION_REV4_REG   0x0103
@@ -217,6 +221,9 @@ struct qpnp_pon {
 	u8			pon_ver;
 	u8			warm_reset_reason1;
 	u8			warm_reset_reason2;
+#ifdef CONFIG_LGE_PM
+	u8			pon_pon_off_reason;
+#endif
 	bool			is_spon;
 	bool			store_hard_reset_reason;
 	bool			kpdpwr_dbc_enable;
@@ -297,6 +304,27 @@ static const char * const qpnp_poff_reason[] = {
 	[38] = "Triggered from S3_RESET_PBS_NACK",
 	[39] = "Triggered from S3_RESET_KPDPWR_ANDOR_RESIN (power key and/or reset line)",
 };
+
+#ifdef CONFIG_LGE_HANDLE_PANIC
+static const char * const pon_ps_hold_reset_ctl[] = {
+	[0] = "RESERVED0",
+	[1] = "WARM_RESET",
+	[2] = "IMMEDIATE_XVDD_SHUTDOWN",
+	[3] = "RESERVED3",
+	[4] = "SHUTDOWN",
+	[5] = "DVDD_SHUTDOWN",
+	[6] = "XVDD_SHUTDOWN",
+	[7] = "HARD_RESET",
+	[8] = "DVDD_HARD_RESET",
+	[9] = "XVDD_HARD_RESET",
+	[10] = "WARM_RESET_AND_DVDD_SHUTDOWN",
+	[11] = "WARM_RESET_AND_XVDD_SHUTDOWN",
+	[12] = "WARM_RESET_AND_SHUTDOWN",
+	[13] = "WARM_RESET_THEN_HARD_RESET",
+	[14] = "WARM_RESET_THEN_DVDD_HARD_RESET",
+	[15] = "WARM_RESET_THEN_XVDD_HARD_RESET",
+};
+#endif
 
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
@@ -533,7 +561,12 @@ static int qpnp_pon_reset_config(struct qpnp_pon *pon,
 			"Unable to write to addr=%hx, rc(%d)\n",
 			rst_en_reg, rc);
 
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	dev_info(&pon->pdev->dev, "power off type = 0x%02X, %s\n",
+							type, pon_ps_hold_reset_ctl[type]);
+#else
 	dev_dbg(&pon->pdev->dev, "power off type = 0x%02X\n", type);
+#endif
 	return rc;
 }
 
@@ -655,6 +688,60 @@ int qpnp_pon_wd_config(bool enable)
 	return rc;
 }
 EXPORT_SYMBOL(qpnp_pon_wd_config);
+
+#ifdef CONFIG_LGE_PM
+/**
+ * qpnp_pon_is_off_reason - Return PMIC Power off reason.
+ *
+ * Returns >= 0 for off reason, < 0 for errors
+ */
+int qpnp_pon_is_off_reason(void)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	if (!pon)
+		return -EPROBE_DEFER;
+
+	return pon->pon_pon_off_reason;
+}
+EXPORT_SYMBOL(qpnp_pon_is_off_reason);
+
+/* control S2 reset type */
+static int qpnp_pon_s2_type_set(const char* val, const struct kernel_param* kp) {
+	struct qpnp_pon* pon = sys_reset_dev;
+	uint type;
+
+	if (!kstrtouint(val, 0, &type) && !qpnp_pon_masked_write(pon,
+		QPNP_PON_KPDPWR_RESIN_S2_CNTL(pon), QPNP_PON_S2_CNTL_TYPE_MASK, type)) {
+		dev_info(&pon->pdev->dev,
+			"Setting s2 reset type = 0x%02X\n", type);
+		return 0;
+	}
+	else {
+		dev_err(&pon->pdev->dev,
+			"Unable to configure S2 reset type of %s\n", val);
+		return -EINVAL;
+	}
+}
+
+static int qpnp_pon_s2_type_get(char* buf, const struct kernel_param* kp) {
+	struct qpnp_pon* pon = sys_reset_dev;
+	uint temp = 0;
+
+	regmap_read(pon->regmap,
+		QPNP_PON_KPDPWR_RESIN_S2_CNTL(pon), &temp);
+
+	return snprintf(buf, QPNP_PON_BUFFER_SIZE, "%d\n",
+		temp & QPNP_PON_S2_CNTL_TYPE_MASK);
+}
+
+static struct kernel_param_ops s2_type_ops = {
+	.set = qpnp_pon_s2_type_set,
+	.get = qpnp_pon_s2_type_get,
+};
+
+module_param_cb(s2_type, &s2_type_ops, NULL, 0644);
+#endif
 
 static int qpnp_pon_get_trigger_config(enum pon_trigger_source pon_src,
 							bool *enabled)
@@ -848,6 +935,11 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
 
+#ifdef CONFIG_LGE_PM
+	pr_err("%s: code(%d), value(%d)\n",
+			__func__, cfg->key_code, key_status);
+#endif
+
 	if (pon->kpdpwr_dbc_enable && cfg->pon_type == PON_KPDPWR) {
 		if (!key_status)
 			pon->kpdpwr_last_release_time = ktime_get();
@@ -864,6 +956,10 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
 	input_sync(pon->pon_input);
+
+#ifdef CONFIG_LGE_HANDLE_PANIC
+	lge_gen_key_panic(cfg->key_code, key_status);
+#endif
 
 	cfg->old_state = !!key_status;
 
@@ -1937,7 +2033,7 @@ static int read_gen2_pon_off_reason(struct qpnp_pon *pon, u16 *reason,
 					int *reason_index_offset)
 {
 	int rc;
-	int buf[2], reg;
+	int buf, reg;
 
 	rc = regmap_read(pon->regmap,
 			QPNP_PON_OFF_REASON(pon),
@@ -1951,35 +2047,35 @@ static int read_gen2_pon_off_reason(struct qpnp_pon *pon, u16 *reason,
 	if (reg & QPNP_GEN2_POFF_SEQ) {
 		rc = regmap_read(pon->regmap,
 				QPNP_POFF_REASON1(pon),
-				buf);
+				&buf);
 		if (rc) {
 			dev_err(&pon->pdev->dev, "Unable to read POFF_REASON1 reg rc:%d\n",
 				rc);
 			return rc;
 		}
-		*reason = (u8)buf[0];
+		*reason = (u8)buf;
 		*reason_index_offset = 0;
 	} else if (reg & QPNP_GEN2_FAULT_SEQ) {
 		rc = regmap_bulk_read(pon->regmap,
 				QPNP_FAULT_REASON1(pon),
-				buf, 2);
+				&buf, 2);
 		if (rc) {
 			dev_err(&pon->pdev->dev, "Unable to read FAULT_REASON regs rc:%d\n",
 				rc);
 			return rc;
 		}
-		*reason = (u8)buf[0] | (u16)(buf[1] << 8);
+		*reason = (u16)buf;
 		*reason_index_offset = POFF_REASON_FAULT_OFFSET;
 	} else if (reg & QPNP_GEN2_S3_RESET_SEQ) {
 		rc = regmap_read(pon->regmap,
 				QPNP_S3_RESET_REASON(pon),
-				buf);
+				&buf);
 		if (rc) {
 			dev_err(&pon->pdev->dev, "Unable to read S3_RESET_REASON reg rc:%d\n",
 				rc);
 			return rc;
 		}
-		*reason = (u8)buf[0];
+		*reason = (u8)buf;
 		*reason_index_offset = POFF_REASON_S3_RESET_OFFSET;
 	}
 
@@ -2170,6 +2266,10 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 				to_spmi_device(pon->pdev->dev.parent)->usid,
 				qpnp_poff_reason[index]);
 	}
+#ifdef CONFIG_LGE_PM
+	if (to_spmi_device(pon->pdev->dev.parent)->usid == 0)
+		pon->pon_pon_off_reason = index;
+#endif
 
 	if (pon->pon_trigger_reason == PON_SMPL ||
 		pon->pon_power_off_reason == QPNP_POFF_REASON_UVLO) {

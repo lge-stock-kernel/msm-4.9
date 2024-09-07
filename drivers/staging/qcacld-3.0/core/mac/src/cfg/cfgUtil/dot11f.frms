@@ -1345,7 +1345,7 @@ IE TPCReport (EID_TPC_REPORT)             // 7.3.2.18
 
 IE SuppChannels (EID_SUPPORTED_CHANNELS)  // 7.2.3.19
 {
-    bands[2][1..48];
+    bands[2][0..48];
 }
 
 IE SuppOperatingClasses (EID_SUPPORTED_OPER_CLASSES)
@@ -3981,7 +3981,6 @@ FRAME ext_channel_switch_action_frame
     FF     Category;
     FF     Action;
     FF     ext_chan_switch_ann_action;
-    OPTIE  WiderBWChanSwitchAnn;
 }
 
 FRAME p2p_oper_chan_change_confirm

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -501,6 +501,10 @@ void dsi_ctrl_hw_cmn_cmd_engine_setup(struct dsi_ctrl_hw *ctrl,
 	reg |= (cfg->wr_mem_continue & 0xFF) << 8;
 	reg |= (cfg->insert_dcs_command ? BIT(16) : 0);
 	DSI_W32(ctrl, DSI_COMMAND_MODE_MDP_DCS_CMD_CTRL, reg);
+	/* To avoid dsi_ctrl_handle_error_status error.
+	* case : 03080024 */
+	DSI_W32(ctrl, DSI_HS_TIMER_CTRL, 0x3FD08);
+	/* The above code is temporary code until merged from QCT. */
 
 	pr_debug("[DSI_%d] Cmd engine setup done\n", ctrl->index);
 }
@@ -773,6 +777,7 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 		cnt = 4;
 
 	read_cnt = (DSI_R32(ctrl, DSI_RDBK_DATA_CTRL) >> 16);
+	SDE_EVT32(read_cnt);
 	ack_err = (rx_byte == 4) ? (read_cnt == 8) :
 			((read_cnt - 4) == (pkt_size + 6));
 
@@ -805,6 +810,9 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 		else
 			*temp++ = ntohl(data);
 		off -= 4;
+		pr_err("%s: data = 0x%x and ntohl(data) = 0x%x\n",
+					__func__, data, ntohl(data));
+		SDE_EVT32(data);
 	}
 
 	if (repeated_bytes) {
@@ -813,7 +821,7 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 	}
 
 	*hw_read_cnt = read_cnt;
-	pr_debug("[DSI_%d] Read %d bytes\n", ctrl->index, rx_byte);
+	pr_err("[DSI_%d] Read %d bytes\n", ctrl->index, rx_byte);
 	return rx_byte;
 }
 
@@ -1475,19 +1483,4 @@ u32 dsi_ctrl_hw_cmn_get_hw_version(struct dsi_ctrl_hw *ctrl)
 	reg = DSI_R32(ctrl, 0x0);
 
 	return reg;
-}
-
-int dsi_ctrl_hw_cmn_wait_for_cmd_mode_mdp_idle(struct dsi_ctrl_hw *ctrl)
-{
-	int rc = 0, val = 0;
-	u32 cmd_mode_mdp_busy_mask = BIT(2);
-	u32 const sleep_us = 2 * 1000;
-	u32 const timeout_us = 200 * 1000;
-
-	rc = readl_poll_timeout(ctrl->base + DSI_STATUS, val,
-			!(val & cmd_mode_mdp_busy_mask), sleep_us, timeout_us);
-	if (rc)
-		pr_err("%s: timed out waiting for idle\n", __func__);
-
-	return rc;
 }

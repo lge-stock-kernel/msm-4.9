@@ -50,6 +50,34 @@
  */
 #define SDE_ENC_CTL_START_THRESHOLD_US 500
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+extern bool is_ddic_name(char *ddic_name);
+#endif
+
+extern u32 get_pin_status_10(void);
+
+static u32 get_intr2_status(struct sde_encoder_phys *phys_enc)
+{
+	u32 MDSS_REG_HW_INTR2_STATUS = 0x0C;
+
+	if (!phys_enc || !phys_enc->hw_mdptop)
+		return 0xDEADDEAD;
+
+	return SDE_REG_READ(&phys_enc->hw_mdptop->hw, MDSS_REG_HW_INTR2_STATUS);
+}
+
+static void clear_intr2_te(struct sde_encoder_phys *phys_enc)
+{
+	const u32 MDSS_REG_HW_INTR2_CLEAR = 0x2C;
+
+	if (!phys_enc || !phys_enc->hw_mdptop)
+		return;
+
+	SDE_REG_WRITE(&phys_enc->hw_mdptop->hw, MDSS_REG_HW_INTR2_CLEAR,
+			0x3000000);
+	wmb();
+}
+
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys_cmd *cmd_enc)
 {
@@ -263,7 +291,8 @@ static void sde_encoder_phys_cmd_pp_rd_ptr_irq(void *arg, int irq_idx)
 	}
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
-			phys_enc->hw_pp->idx - PINGPONG_0, event, 0xfff);
+			phys_enc->hw_pp->idx - PINGPONG_0, event, 0xfff,
+			get_intr2_status(phys_enc));
 
 	if (phys_enc->parent_ops.handle_vblank_virt)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent,
@@ -382,13 +411,6 @@ static void sde_encoder_phys_cmd_cont_splash_mode_set(
 	phys_enc->cached_mode = *adj_mode;
 	phys_enc->enable_state = SDE_ENC_ENABLED;
 
-	if (!phys_enc->hw_ctl || !phys_enc->hw_pp) {
-		SDE_DEBUG("invalid ctl:%d pp:%d\n",
-			(phys_enc->hw_ctl == NULL),
-			(phys_enc->hw_pp == NULL));
-		return;
-	}
-
 	_sde_encoder_phys_cmd_setup_irq_hw_idx(phys_enc);
 }
 
@@ -444,6 +466,32 @@ static bool _sde_encoder_phys_is_ppsplit(struct sde_encoder_phys *phys_enc)
 	return false;
 }
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+static u32 sde_encoder_phys_cmd_te_monitor(void)
+{
+	int timeout = 10000;
+	int gpio_value = 0;
+	u32 ret;
+
+	pr_info("start\n");
+	while (timeout > 0 && gpio_value != 1) {
+		gpio_value = gpio_get_value(10);
+		usleep_range(500, 500);
+		timeout--;
+	}
+
+	if (gpio_value == 1) {
+		pr_info("[Display] TE GPIO value is 1\n");
+	} else {
+		pr_info("[Display] Could not catch TE GPIO value\n");
+	}
+	ret = gpio_value;
+	pr_info("end\n");
+
+	return ret;
+}
+#endif
+
 static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -454,6 +502,10 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 
 	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_ctl)
 		return -EINVAL;
+
+	pr_err("pptimeout INTR2_STATUS 0x%x pin10 0x%x\n",
+			get_intr2_status(phys_enc),
+			get_pin_status_10());
 
 	cmd_enc->pp_timeout_report_cnt++;
 
@@ -471,12 +523,20 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
 			cmd_enc->pp_timeout_report_cnt,
 			atomic_read(&phys_enc->pending_kickoff_cnt),
-			frame_event);
+			frame_event,
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+			sde_encoder_phys_cmd_te_monitor(),
+#endif
+			get_pin_status_10(),
+			get_intr2_status(phys_enc));
 
 	if (cmd_enc->pp_timeout_report_cnt >= PP_TIMEOUT_MAX_TRIALS) {
 		cmd_enc->pp_timeout_report_cnt = PP_TIMEOUT_MAX_TRIALS;
 		frame_event |= SDE_ENCODER_FRAME_EVENT_PANEL_DEAD;
-
+// Temp Code
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+		if (!(is_ddic_name("sw49410") || is_ddic_name("sw49410_rev1") || is_ddic_name("sw43402")))
+#endif
 		SDE_DBG_DUMP("panic");
 	} else if (cmd_enc->pp_timeout_report_cnt == 1) {
 		/* to avoid flooding, only log first time, and "dead" time */
@@ -675,6 +735,7 @@ static int sde_encoder_phys_cmd_control_vblank_irq(
 		return -EINVAL;
 	}
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	refcount = atomic_read(&phys_enc->vblank_refcount);
 
 	/* Slave encoders don't report vblank */
@@ -708,6 +769,7 @@ end:
 				enable, refcount, SDE_EVTLOG_ERROR);
 	}
 
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 	return ret;
 }
 
@@ -852,8 +914,9 @@ static void _sde_encoder_phys_cmd_pingpong_config(
 	struct sde_encoder_phys_cmd *cmd_enc =
 		to_sde_encoder_phys_cmd(phys_enc);
 
-	if (!phys_enc || !phys_enc->hw_pp) {
-		SDE_ERROR("invalid arg(s), enc %d\n", phys_enc != NULL);
+	if (!phys_enc || !phys_enc->hw_ctl || !phys_enc->hw_pp
+			|| !phys_enc->hw_ctl->ops.setup_intf_cfg) {
+		SDE_ERROR("invalid arg(s), enc %d\n", phys_enc != 0);
 		return;
 	}
 
@@ -872,9 +935,7 @@ static bool sde_encoder_phys_cmd_needs_single_flush(
 	if (!phys_enc)
 		return false;
 
-	return phys_enc->cont_splash_settings ?
-		phys_enc->cont_splash_single_flush :
-		_sde_encoder_phys_is_ppsplit(phys_enc);
+	return _sde_encoder_phys_is_ppsplit(phys_enc);
 }
 
 static void sde_encoder_phys_cmd_enable_helper(
@@ -883,7 +944,7 @@ static void sde_encoder_phys_cmd_enable_helper(
 	struct sde_hw_ctl *ctl;
 	u32 flush_mask = 0;
 
-	if (!phys_enc || !phys_enc->hw_pp) {
+	if (!phys_enc || !phys_enc->hw_ctl || !phys_enc->hw_pp) {
 		SDE_ERROR("invalid arg(s), encoder %d\n", phys_enc != 0);
 		return;
 	}
@@ -899,11 +960,6 @@ static void sde_encoder_phys_cmd_enable_helper(
 	if (_sde_encoder_phys_is_ppsplit(phys_enc) &&
 		!sde_encoder_phys_cmd_is_master(phys_enc))
 		goto skip_flush;
-
-	if (!phys_enc->hw_ctl) {
-		SDE_ERROR("invalid ctl\n");
-		return;
-	}
 
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.get_bitmask_intf(ctl, &flush_mask, phys_enc->intf_idx);
@@ -1099,6 +1155,8 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 				phys_enc->hw_pp->idx - PINGPONG_0);
 		SDE_ERROR("failed wait_for_idle: %d\n", ret);
 	}
+
+	clear_intr2_te(phys_enc);
 
 	SDE_DEBUG_CMDENC(cmd_enc, "pp:%d pending_cnt %d\n",
 			phys_enc->hw_pp->idx - PINGPONG_0,
@@ -1393,6 +1451,7 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	phys_enc->split_role = p->split_role;
 	phys_enc->intf_mode = INTF_MODE_CMD;
 	phys_enc->enc_spinlock = p->enc_spinlock;
+	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	cmd_enc->stream_sel = 0;
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 	phys_enc->comp_type = p->comp_type;

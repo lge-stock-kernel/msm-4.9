@@ -131,8 +131,10 @@ v_CONTEXT_t cds_init(void)
 	QDF_STATUS ret;
 
 	ret = qdf_debugfs_init();
-	if (ret != QDF_STATUS_SUCCESS)
+	if (ret != QDF_STATUS_SUCCESS) {
 		cds_err("Failed to init debugfs");
+		goto err_ret;
+	}
 
 	qdf_lock_stats_init();
 	qdf_mem_init();
@@ -168,7 +170,7 @@ deinit:
 	gp_cds_context->qdf_ctx = NULL;
 	gp_cds_context = NULL;
 	qdf_mem_zero(&g_cds_context, sizeof(g_cds_context));
-
+err_ret:
 	return NULL;
 }
 
@@ -910,10 +912,6 @@ QDF_STATUS cds_post_disable(void)
 		cds_err("Failed to get txrx pdev!");
 		return QDF_STATUS_E_INVAL;
 	}
-
-	/* Clean up all MC thread message queues */
-	if (gp_cds_sched_context)
-		cds_sched_flush_mc_mqs(gp_cds_sched_context);
 
 	/*
 	 * With new state machine changes cds_close can be invoked without
@@ -2765,45 +2763,22 @@ QDF_STATUS cds_deregister_dp_cb(void)
 	return QDF_STATUS_SUCCESS;
 }
 
-uint32_t cds_get_connectivity_stats_pkt_bitmap(void *context)
-{
-	hdd_adapter_t *adapter = NULL;
-
-	if (!context)
-		return 0;
-
-	adapter = (hdd_adapter_t *)context;
-	if (unlikely(adapter->magic != WLAN_HDD_ADAPTER_MAGIC)) {
-		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_ERROR,
-			  "Magic cookie(%x) for adapter sanity verification is invalid",
-			  adapter->magic);
-		return 0;
-	}
-	return adapter->pkt_type_bitmap;
-}
-
 /**
  * cds_get_arp_stats_gw_ip() - get arp stats track IP
  *
  * Return: ARP stats IP to track
  */
-uint32_t cds_get_arp_stats_gw_ip(void *context)
+uint32_t cds_get_arp_stats_gw_ip(void)
 {
-	hdd_adapter_t *adapter = NULL;
+	hdd_context_t *hdd_ctx;
 
-	if (!context)
-		return 0;
-
-	adapter = (hdd_adapter_t *)context;
-
-	if (unlikely(adapter->magic != WLAN_HDD_ADAPTER_MAGIC)) {
-		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_ERROR,
-			  "Magic cookie(%x) for adapter sanity verification is invalid",
-			  adapter->magic);
+	hdd_ctx = (hdd_context_t *) (gp_cds_context->pHDDContext);
+	if (!hdd_ctx) {
+		cds_err("Hdd Context is Null");
 		return 0;
 	}
 
-	return adapter->track_arp_ip;
+	return hdd_ctx->track_arp_ip;
 }
 
 /**

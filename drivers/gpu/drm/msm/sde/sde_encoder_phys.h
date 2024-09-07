@@ -31,7 +31,7 @@
 #define SDE_ENCODER_NAME_MAX	16
 
 /* wait for at most 2 vsync for lowest refresh rate (24hz) */
-#define KICKOFF_TIMEOUT_MS		84
+#define KICKOFF_TIMEOUT_MS		1000
 #define KICKOFF_TIMEOUT_JIFFIES		msecs_to_jiffies(KICKOFF_TIMEOUT_MS)
 
 /**
@@ -261,8 +261,6 @@ struct sde_encoder_irq {
  *                              fences that have to be signalled.
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
  * @irq:			IRQ tracking structures
- * @cont_splash_single_flush	Variable to check if single flush is enabled.
- * @cont_splash_settings	Variable to store continuous splash settings.
  */
 struct sde_encoder_phys {
 	struct drm_encoder *parent;
@@ -282,6 +280,7 @@ struct sde_encoder_phys {
 	enum msm_display_compression_type comp_type;
 	spinlock_t *enc_spinlock;
 	enum sde_enc_enable_state enable_state;
+	struct mutex *vblank_ctl_lock;
 	atomic_t vblank_refcount;
 	atomic_t vsync_cnt;
 	atomic_t underrun_cnt;
@@ -290,8 +289,6 @@ struct sde_encoder_phys {
 	atomic_t pending_retire_fence_cnt;
 	wait_queue_head_t pending_kickoff_wq;
 	struct sde_encoder_irq irq[INTR_IDX_MAX];
-	u32 cont_splash_single_flush;
-	bool cont_splash_settings;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
@@ -431,6 +428,7 @@ struct sde_enc_phys_init_params {
 	enum sde_wb wb_idx;
 	enum msm_display_compression_type comp_type;
 	spinlock_t *enc_spinlock;
+	struct mutex *vblank_ctl_lock;
 };
 
 /**

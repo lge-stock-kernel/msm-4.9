@@ -170,6 +170,9 @@ static void kasan_end_report(unsigned long *flags)
 	pr_err("==================================================================\n");
 	add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
 	spin_unlock_irqrestore(&report_lock, *flags);
+#ifdef CONFIG_MACH_LGE
+	BUG_ON(1);
+#endif
 	kasan_enable_current();
 }
 
@@ -363,6 +366,7 @@ void kasan_report(unsigned long addr, size_t size,
 	disable_trace_on_warning();
 
 	info.access_addr = (void *)addr;
+	info.first_bad_addr = (void *)addr;
 	info.access_size = size;
 	info.is_write = is_write;
 	info.ip = ip;

@@ -217,6 +217,9 @@
 /* Global Debug LTSSM Register */
 #define DWC3_GDBGLTSSM_LINKSTATE_MASK	(0xF << 22)
 
+/* Global User Control 1 Register */
+#define DWC3_GUCTL1_DEV_L1_EXIT_BY_HW	(1 << 24)
+
 /* Global USB2 PHY Configuration Register */
 #define DWC3_GUSB2PHYCFG_PHYSOFTRST	(1 << 31)
 #define DWC3_GUSB2PHYCFG_ENBLSLPM	(1 << 8)
@@ -1034,6 +1037,7 @@ struct dwc3 {
 #define DWC3_REVISION_260A	0x5533260a
 #define DWC3_REVISION_270A	0x5533270a
 #define DWC3_REVISION_280A	0x5533280a
+#define DWC3_REVISION_290A	0x5533290a
 #define DWC3_REVISION_300A	0x5533300a
 #define DWC3_REVISION_310A	0x5533310a
 
@@ -1137,6 +1141,7 @@ struct dwc3 {
 	unsigned int		bh_handled_evt_cnt[MAX_INTR_STATS];
 	unsigned int		bh_dbg_index;
 	ktime_t			irq_start_time[MAX_INTR_STATS];
+	ktime_t			irq_end_time[MAX_INTR_STATS];
 	ktime_t			t_pwr_evt_irq;
 	unsigned int		irq_completion_time[MAX_INTR_STATS];
 	unsigned int		irq_event_count[MAX_INTR_STATS];

@@ -142,8 +142,7 @@
 		pm8998_s9_level: regulator-s9-level {
 			regulator-name = "pm8998_s9_level";
 			qcom,set = <RPMH_REGULATOR_SET_ALL>;
-			regulator-min-microvolt
-				= <RPMH_REGULATOR_LEVEL_RETENTION>;
+			regulator-min-microvolt = <RPMH_REGULATOR_LEVEL_OFF>;
 			regulator-max-microvolt = <RPMH_REGULATOR_LEVEL_MAX>;
 			qcom,min-dropout-voltage-level = <(-1)>;
 		};
@@ -151,8 +150,7 @@
 		pm8998_s9_level_ao: regulator-s9-level-ao {
 			regulator-name = "pm8998_s9_level_ao";
 			qcom,set = <RPMH_REGULATOR_SET_ACTIVE>;
-			regulator-min-microvolt
-				= <RPMH_REGULATOR_LEVEL_RETENTION>;
+			regulator-min-microvolt = <RPMH_REGULATOR_LEVEL_OFF>;
 			regulator-max-microvolt = <RPMH_REGULATOR_LEVEL_MAX>;
 			qcom,min-dropout-voltage-level = <(-1)>;
 		};
@@ -524,7 +522,7 @@
 			regulator-min-microvolt = <2856000>;
 			regulator-max-microvolt = <3104000>;
 			qcom,init-voltage = <2856000>;
-			qcom,init-mode = <RPMH_REGULATOR_MODE_LDO_LPM>;
+			qcom,init-mode = <RPMH_REGULATOR_MODE_LDO_HPM>;
 		};
 	};
 

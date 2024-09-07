@@ -4947,6 +4947,10 @@ loop:
 		usb_put_dev(udev);
 		if ((status == -ENOTCONN) || (status == -ENOTSUPP))
 			break;
+#ifdef CONFIG_LGE_USB
+		if (status == -ESHUTDOWN)
+			goto done;
+#endif
 	}
 	if (hub->hdev->parent ||
 			!hcd->driver->port_handed_over ||
@@ -4958,8 +4962,13 @@ loop:
 			&& hcd->usb_phy && hcd->usb_phy->disable_chirp) {
 			ret = hcd->usb_phy->disable_chirp(hcd->usb_phy, true);
 			if (!ret) {
+#ifdef CONFIG_LGE_USB
+				dev_info(&port_dev->dev,
+					"chirp disabled re-try enum\n");
+#else
 				dev_dbg(&port_dev->dev,
 					"chirp disabled re-try enum\n");
+#endif
 				goto retry_enum;
 			} else {
 				/* bail out and re-enable chirping */

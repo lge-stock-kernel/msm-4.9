@@ -93,13 +93,13 @@ struct nla_policy scan_policy[QCA_WLAN_VENDOR_ATTR_SCAN_MAX + 1] = {
 	[QCA_WLAN_VENDOR_ATTR_SCAN_FLAGS] = {.type = NLA_U32},
 	[QCA_WLAN_VENDOR_ATTR_SCAN_TX_NO_CCK_RATE] = {.type = NLA_FLAG},
 	[QCA_WLAN_VENDOR_ATTR_SCAN_COOKIE] = {.type = NLA_U64},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_IE] = {.type = NLA_BINARY,
-					  .len = MAX_DEFAULT_SCAN_IE_LEN},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_MAC] = {.type = NLA_UNSPEC,
-					   .len = QDF_MAC_ADDR_SIZE},
-	[QCA_WLAN_VENDOR_ATTR_SCAN_MAC_MASK] = {.type = NLA_UNSPEC,
-						.len = QDF_MAC_ADDR_SIZE},
 };
+
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+unsigned long static g_scansuppress_mode = 0;
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+#endif
 
 /**
  * hdd_translate_abg_rate_to_mbps_rate() - translate abg rate to Mbps rate
@@ -312,7 +312,6 @@ static int hdd_add_scan_event_from_ies(struct hdd_scan_info *scanInfo,
 					tCsrScanResultInfo *scan_result,
 					char *current_event, char *last_event)
 {
-	int ret;
 	hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(scanInfo->dev);
 	tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
 	tSirBssDescription *descriptor = &scan_result->BssDescriptor;
@@ -342,13 +341,9 @@ static int hdd_add_scan_event_from_ies(struct hdd_scan_info *scanInfo,
 	if (ie_length <= 0)
 		return 0;
 
-	ret = dot11f_unpack_beacon_i_es((tpAniSirGlobal)
+	dot11f_unpack_beacon_i_es((tpAniSirGlobal)
 				  hHal, (uint8_t *) descriptor->ieFields,
 				  ie_length, &dot11BeaconIEs, false);
-	if (DOT11F_FAILED(ret)) {
-		hdd_err("unpack failed, ret: 0x%x", ret);
-		return -EINVAL;
-	}
 
 	pDot11SSID = &dot11BeaconIEs.SSID;
 
@@ -636,10 +631,8 @@ static void hdd_update_dbs_scan_ctrl_ext_flag(hdd_context_t *hdd_ctx,
 		goto end;
 	}
 
-	if ((hdd_ctx->config->dual_mac_feature_disable ==
-	     DISABLE_DBS_CXN_AND_SCAN) ||
-	    (hdd_ctx->config->dual_mac_feature_disable ==
-	     ENABLE_DBS_CXN_AND_DISABLE_DBS_SCAN)) {
+	if (hdd_ctx->config->dual_mac_feature_disable ==
+				DISABLE_DBS_CXN_AND_SCAN) {
 		hdd_debug("DBS is disabled");
 		goto end;
 	}
@@ -1943,6 +1936,15 @@ static int __wlan_hdd_cfg80211_scan(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+	if ((g_scansuppress_mode == 1) && (request->wdev->iftype != NL80211_IFTYPE_AP)) {
+		hdd_err("lge priv-command scansuppress is enabled, scan is not allowed");
+		return -EPERM;
+	}
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+#endif
+
 	if ((eConnectionState_Associated ==
 			WLAN_HDD_GET_STATION_CTX_PTR(pAdapter)->
 						conn_info.connState) &&
@@ -2015,10 +2017,8 @@ static int __wlan_hdd_cfg80211_scan(struct wiphy *wiphy,
 			return 0;
 		}
 	}
-	if ((pHddCtx->config->dual_mac_feature_disable ==
-	     DISABLE_DBS_CXN_AND_SCAN) ||
-	    (pHddCtx->config->dual_mac_feature_disable ==
-	     ENABLE_DBS_CXN_AND_DISABLE_DBS_SCAN)) {
+	if (pHddCtx->config->dual_mac_feature_disable ==
+				DISABLE_DBS_CXN_AND_SCAN) {
 		if (true == pScanInfo->mScanPending) {
 			scan_ebusy_cnt++;
 			if (MAX_PENDING_LOG >
@@ -2377,9 +2377,7 @@ static int __wlan_hdd_cfg80211_scan(struct wiphy *wiphy,
 				&hdd_cfg80211_scan_done_callback, dev);
 
 	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err_ratelimited(HDD_SCAN_REJECT_RATE_LIMIT,
-				    "sme_scan_request returned error %d",
-				    status);
+		hdd_err("sme_scan_request returned error %d", status);
 		if (QDF_STATUS_E_RESOURCES == status) {
 			scan_ebusy_cnt++;
 			hdd_err("HO is in progress. Defer scan scan_ebusy_cnt: %d",
@@ -2654,7 +2652,7 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 	enum nl80211_band band;
 	uint32_t n_channels = 0, n_ssid = 0;
 	uint32_t tmp, count, j;
-	size_t len, ie_len = 0;
+	size_t len, ie_len;
 	struct ieee80211_channel *chan;
 	hdd_context_t *hdd_ctx = wiphy_priv(wiphy);
 	int ret;
@@ -2697,6 +2695,8 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 
 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE])
 		ie_len = nla_len(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]);
+	else
+		ie_len = 0;
 
 	len = sizeof(*request) + (sizeof(*request->ssids) * n_ssid) +
 			(sizeof(*request->channels) * n_channels) + ie_len;
@@ -2714,7 +2714,6 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 			request->ie = (void *)(request->channels + n_channels);
 	}
 
-	request->ie_len = ie_len;
 	count = 0;
 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_FREQUENCIES]) {
 		nla_for_each_nested(attr,
@@ -2772,9 +2771,12 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 		}
 	}
 
-	if (ie_len)
-		nla_memcpy((void *)request->ie,
-			   tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE], ie_len);
+	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]) {
+		request->ie_len = nla_len(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]);
+		memcpy((void *)request->ie,
+				nla_data(tb[QCA_WLAN_VENDOR_ATTR_SCAN_IE]),
+				request->ie_len);
+	}
 
 	for (count = 0; count < HDD_NUM_NL80211_BANDS; count++)
 		if (wiphy->bands[count])
@@ -2829,8 +2831,7 @@ static int __wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 
 	ret = __wlan_hdd_cfg80211_scan(wiphy, request, VENDOR_SCAN);
 	if (0 != ret) {
-		hdd_err_ratelimited(HDD_SCAN_REJECT_RATE_LIMIT,
-				    "Scan Failed. Ret = %d", ret);
+		hdd_err("Scan Failed. Ret = %d", ret);
 		qdf_mem_free(request);
 		return ret;
 	}
@@ -3904,3 +3905,18 @@ void wlan_hdd_fill_whitelist_ie_attrs(bool *ie_whitelist,
 	for (i = 0; i < hdd_ctx->no_of_probe_req_ouis; i++)
 		voui[i] = hdd_ctx->probe_req_voui[i];
 }
+
+#ifdef FEATURE_SUPPORT_LGE
+/*LGE_CHNAGE_S, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+void wlan_hdd_set_scan_suppress(unsigned long on_off);
+void wlan_hdd_set_scan_suppress(unsigned long on_off) {
+	if (on_off == 1) {
+		g_scansuppress_mode = 1;
+	}
+	else {
+		g_scansuppress_mode = 0;
+	}
+}
+/*LGE_CHNAGE_E, DRIVER scan_suppress command, 2017-07-12, moon-wifi@lge.com*/
+#endif
+

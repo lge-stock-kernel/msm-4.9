@@ -1,8 +1,11 @@
+ifneq ($(CONFIG_MACH_LGE), y)
 dtb-$(CONFIG_ARCH_QCOM)	+= apq8016-sbc.dtb msm8916-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= msm8996-mtp.dtb
 dtb-$(CONFIG_ARCH_QCOM)	+= apq8096-db820c.dtb
+endif
 
 ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+ifneq ($(CONFIG_MACH_LGE), y)
 	dtbo-$(CONFIG_ARCH_SDM845) += \
 		sdm845-cdp-overlay.dtbo \
 		sdm845-mtp-overlay.dtbo \
@@ -33,14 +36,12 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 		sda845-v2-mtp-overlay.dtbo \
 		sda845-v2-qrd-overlay.dtbo \
 		sda845-v2-hdk-overlay.dtbo \
-		sda845-v2-svr-overlay.dtbo \
 		sda845-v2-4k-panel-mtp-overlay.dtbo \
 		sda845-v2-4k-panel-cdp-overlay.dtbo \
 		sda845-v2-4k-panel-qrd-overlay.dtbo \
 		sda845-v2.1-cdp-overlay.dtbo \
 		sda845-v2.1-mtp-overlay.dtbo \
 		sda845-v2.1-qrd-overlay.dtbo \
-		sda845-v2.1-svr-overlay.dtbo \
 		sda845-v2.1-4k-panel-cdp-overlay.dtbo \
 		sda845-v2.1-4k-panel-mtp-overlay.dtbo \
 		sda845-v2.1-4k-panel-qrd-overlay.dtbo
@@ -74,17 +75,20 @@ sda845-v2-cdp-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-mtp-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-qrd-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-hdk-overlay.dtbo-base := sda845-v2.dtb
-sda845-v2-svr-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-4k-panel-mtp-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-4k-panel-cdp-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2-4k-panel-qrd-overlay.dtbo-base := sda845-v2.dtb
 sda845-v2.1-cdp-overlay.dtbo-base := sda845-v2.1.dtb
 sda845-v2.1-mtp-overlay.dtbo-base := sda845-v2.1.dtb
 sda845-v2.1-qrd-overlay.dtbo-base := sda845-v2.1.dtb
-sda845-v2.1-svr-overlay.dtbo-base := sda845-v2.1.dtb
 sda845-v2.1-4k-panel-cdp-overlay.dtbo-base := sda845-v2.1.dtb
 sda845-v2.1-4k-panel-mtp-overlay.dtbo-base := sda845-v2.1.dtb
 sda845-v2.1-4k-panel-qrd-overlay.dtbo-base := sda845-v2.1.dtb
+else #CONFIG_MACH_LGE
+dtb-$(CONFIG_ARCH_SDM845) += sdm845.dtb \
+	sdm845-v2.dtb \
+	sdm845-v2.1.dtb
+endif
 else
 dtb-$(CONFIG_ARCH_SDM845) += sdm845-sim.dtb \
 	sdm845-rumi.dtb \

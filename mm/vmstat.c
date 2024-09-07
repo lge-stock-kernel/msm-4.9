@@ -945,6 +945,9 @@ const char * const vmstat_text[] = {
 	"numa_other",
 #endif
 	"nr_free_cma",
+#ifdef CONFIG_MIGRATE_HIGHORDER
+	"nr_free_highorder",
+#endif
 
 	/* Node-based counters */
 	"nr_inactive_anon",
@@ -954,9 +957,9 @@ const char * const vmstat_text[] = {
 	"nr_unevictable",
 	"nr_isolated_anon",
 	"nr_isolated_file",
-	"workingset_refault",
-	"workingset_activate",
-	"workingset_nodereclaim",
+	"refault_inactive_file",
+	"refault_active_file",
+	"refault_nodereclaim",
 	"nr_anon_pages",
 	"nr_mapped",
 	"nr_file_pages",
@@ -1087,10 +1090,7 @@ const char * const vmstat_text[] = {
 	"vmacache_find_hits",
 	"vmacache_full_flushes",
 #endif
-#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-	"speculative_pgfault"
-#endif
-#endif /* CONFIG_VM_EVENT_COUNTERS */
+#endif /* CONFIG_VM_EVENTS_COUNTERS */
 };
 #endif /* CONFIG_PROC_FS || CONFIG_SYSFS || CONFIG_NUMA */
 

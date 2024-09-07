@@ -1161,7 +1161,9 @@ struct wma_txrx_node {
 	qdf_wake_lock_t vdev_set_key_wakelock;
 	struct roam_synch_frame_ind roam_synch_frame_ind;
 	bool is_waiting_for_key;
-	uint8_t channel;
+//CR2205282, [Start] Fix to do 2.4GHz 11ac operation
+        uint8_t channel;
+//CR2205282, [End] Fix to do 2.4GHz 11ac operation
 };
 
 #if defined(QCA_WIFI_FTM)

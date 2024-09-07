@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -120,6 +120,15 @@ struct sde_rot_dbg_evtlog {
 	u32 *rot_dbgbus_dump;
 	u32 *reg_dump_array[SDE_ROT_DEBUG_BASE_MAX];
 } sde_rot_dbg_evtlog;
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+void sde_rot_dump_enable(bool enable) {
+	if (enable)
+		sde_rot_dbg_evtlog.evtlog_enable = SDE_EVTLOG_DEFAULT_ENABLE;
+	else
+		sde_rot_dbg_evtlog.evtlog_enable = 0;
+}
+#endif
 
 static void sde_rot_dump_debug_bus(u32 bus_dump_flag, u32 **dump_mem)
 {
@@ -568,11 +577,6 @@ static ssize_t sde_rot_evtlog_dump_read(struct file *file, char __user *buff,
 	if (__sde_rot_evtlog_dump_calc_range()) {
 		len = sde_rot_evtlog_dump_entry(evtlog_buf,
 				SDE_ROT_EVTLOG_BUF_MAX);
-		if (len < 0 || len > count) {
-			pr_err("len is more than the user buffer size\n");
-			return 0;
-		}
-
 		if (copy_to_user(buff, evtlog_buf, len))
 			return -EFAULT;
 		*ppos += len;
@@ -591,6 +595,11 @@ static ssize_t sde_rot_evtlog_dump_read(struct file *file, char __user *buff,
 static ssize_t sde_rot_evtlog_dump_write(struct file *file,
 	const char __user *user_buf, size_t count, loff_t *ppos)
 {
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	if (!sde_rot_evtlog_is_enabled(SDE_ROT_EVTLOG_DEFAULT)) {
+		return count;
+	}
+#endif
 	sde_rot_evtlog_dump_all();
 
 	sde_rot_dump_reg_all();

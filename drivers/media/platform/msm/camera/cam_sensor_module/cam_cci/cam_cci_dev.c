@@ -16,7 +16,7 @@
 #include "cam_cci_core.h"
 
 #define CCI_MAX_DELAY 1000000
-#define CCI_TIMEOUT msecs_to_jiffies(500)
+#define CCI_TIMEOUT msecs_to_jiffies(5000)
 
 static struct v4l2_subdev *g_cci_subdev;
 
@@ -74,14 +74,14 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
 		if (cci_dev->cci_master_info[MASTER_0].reset_pending == TRUE) {
 			cci_dev->cci_master_info[MASTER_0].reset_pending =
 				FALSE;
-			complete(
-			&cci_dev->cci_master_info[MASTER_0].reset_complete);
+			complete(&cci_dev->cci_master_info[MASTER_0].
+				reset_complete);
 		}
 		if (cci_dev->cci_master_info[MASTER_1].reset_pending == TRUE) {
 			cci_dev->cci_master_info[MASTER_1].reset_pending =
 				FALSE;
-			complete(
-			&cci_dev->cci_master_info[MASTER_1].reset_complete);
+			complete(&cci_dev->cci_master_info[MASTER_1].
+				reset_complete);
 		}
 	}
 	if (irq & CCI_IRQ_STATUS_0_I2C_M0_RD_DONE_BMSK) {
@@ -174,13 +174,13 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
 		cci_dev->cci_master_info[MASTER_0].status = -EINVAL;
 		cam_io_w_mb(CCI_M0_HALT_REQ_RMSK,
 			base + CCI_HALT_REQ_ADDR);
-		CAM_DBG(CAM_CCI, "MASTER_0 error 0x%x", irq);
+		CAM_ERR(CAM_CCI, "MASTER_0 error 0x%x", irq);
 	}
 	if (irq & CCI_IRQ_STATUS_0_I2C_M1_ERROR_BMSK) {
 		cci_dev->cci_master_info[MASTER_1].status = -EINVAL;
 		cam_io_w_mb(CCI_M1_HALT_REQ_RMSK,
 			base + CCI_HALT_REQ_ADDR);
-		CAM_DBG(CAM_CCI, "MASTER_1 error 0x%x", irq);
+		CAM_ERR(CAM_CCI, "MASTER_1 error 0x%x", irq);
 	}
 	return IRQ_HANDLED;
 }

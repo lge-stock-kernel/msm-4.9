@@ -52,7 +52,6 @@
 #include <wlan_hdd_wmm.h>
 #include "utils_api.h"
 #include "wlan_hdd_p2p.h"
-#include "wlan_hdd_request_manager.h"
 #ifdef FEATURE_WLAN_TDLS
 #include "wlan_hdd_tdls.h"
 #endif
@@ -100,7 +99,6 @@
 #define HDD_FINISH_ULA_TIME_OUT         800
 #define HDD_SET_MCBC_FILTERS_TO_FW      1
 #define HDD_DELETE_MCBC_FILTERS_FROM_FW 0
-#define HDD_UT_SUSPEND_RESUME_LOG_RL (1024)
 
 /* To Validate Channel against the Frequency and Vice-Versa */
 static const struct ccp_freq_chan_map freq_chan_map[] = {
@@ -3581,7 +3579,6 @@ QDF_STATUS wlan_hdd_get_rssi(hdd_adapter_t *pAdapter, int8_t *rssi_value)
 	hdd_request_put(request);
 
 	*rssi_value = pAdapter->rssi;
-	hdd_debug("RSSI = %d", *rssi_value);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -3874,7 +3871,8 @@ static void hdd_get_peer_rssi_cb(struct sir_peer_info_resp *sta_rssi,
 	hdd_debug("%d peers", peer_num);
 
 	if (peer_num > MAX_PEER_STA) {
-		hdd_warn("Exceed max peer sta to handle one time %d", peer_num);
+		hdd_warn("Exceed max peer sta to handle one time %d",
+			 peer_num);
 		peer_num = MAX_PEER_STA;
 	}
 
@@ -4412,6 +4410,188 @@ static int iw_get_name(struct net_device *dev,
 }
 
 /**
+ * __iw_set_mode() - ioctl handler
+ * @dev: device upon which the ioctl was received
+ * @info: ioctl request information
+ * @wrqu: ioctl request data
+ * @extra: ioctl extra data
+ *
+ * Return: 0 on success, non-zero on error
+ */
+static int __iw_set_mode(struct net_device *dev,
+			 struct iw_request_info *info,
+			 union iwreq_data *wrqu, char *extra)
+{
+	hdd_wext_state_t *pWextState;
+	hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_context_t *hdd_ctx;
+	tCsrRoamProfile *pRoamProfile;
+	eCsrRoamBssType LastBSSType;
+	struct hdd_config *pConfig;
+	struct wireless_dev *wdev;
+	int ret;
+
+	ENTER_DEV(dev);
+
+	hdd_ctx = WLAN_HDD_GET_CTX(pAdapter);
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (0 != ret)
+		return ret;
+
+	pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
+	wdev = dev->ieee80211_ptr;
+	pRoamProfile = &pWextState->roamProfile;
+	LastBSSType = pRoamProfile->BSSType;
+
+	hdd_debug("Old Bss type = %d", LastBSSType);
+
+	switch (wrqu->mode) {
+	case IW_MODE_ADHOC:
+		hdd_debug("Setting AP Mode as IW_MODE_ADHOC");
+		pRoamProfile->BSSType = eCSR_BSS_TYPE_START_IBSS;
+		/* Set the phymode correctly for IBSS. */
+		pConfig = (WLAN_HDD_GET_CTX(pAdapter))->config;
+		pWextState->roamProfile.phyMode =
+			hdd_cfg_xlate_to_csr_phy_mode(pConfig->dot11Mode);
+		pAdapter->device_mode = QDF_IBSS_MODE;
+		wdev->iftype = NL80211_IFTYPE_ADHOC;
+		break;
+	case IW_MODE_INFRA:
+		hdd_debug("Setting AP Mode as IW_MODE_INFRA");
+		pRoamProfile->BSSType = eCSR_BSS_TYPE_INFRASTRUCTURE;
+		wdev->iftype = NL80211_IFTYPE_STATION;
+		break;
+	case IW_MODE_AUTO:
+		hdd_debug("Setting AP Mode as IW_MODE_AUTO");
+		pRoamProfile->BSSType = eCSR_BSS_TYPE_ANY;
+		break;
+	default:
+		hdd_err("Unknown AP Mode value %d", wrqu->mode);
+		return -EOPNOTSUPP;
+	}
+
+	if (LastBSSType != pRoamProfile->BSSType) {
+		/* the BSS mode changed.  We need to issue disconnect
+		 * if connected or in IBSS disconnect state
+		 */
+		if (hdd_conn_is_connected
+			    (WLAN_HDD_GET_STATION_CTX_PTR(pAdapter))
+		    || (eCSR_BSS_TYPE_START_IBSS == LastBSSType)) {
+			QDF_STATUS qdf_status;
+			/* need to issue a disconnect to CSR. */
+			INIT_COMPLETION(pAdapter->disconnect_comp_var);
+			qdf_status =
+				sme_roam_disconnect(WLAN_HDD_GET_HAL_CTX(pAdapter),
+						    pAdapter->sessionId,
+						    eCSR_DISCONNECT_REASON_IBSS_LEAVE);
+			if (QDF_STATUS_SUCCESS == qdf_status) {
+				unsigned long rc;
+
+				rc = wait_for_completion_timeout(&pAdapter->
+								 disconnect_comp_var,
+								 msecs_to_jiffies
+									 (WLAN_WAIT_TIME_DISCONNECT));
+				if (!rc)
+					hdd_err("disconnect_comp_var failed");
+			}
+		}
+	}
+
+	EXIT();
+	return 0;
+}
+
+/**
+ * iw_set_mode() - SSR wrapper for __iw_set_mode()
+ * @dev: pointer to net_device
+ * @info: pointer to iw_request_info
+ * @wrqu: pointer to iwreq_data
+ * @extra: pointer to extra ioctl payload
+ *
+ * Return: 0 on success, error number otherwise
+ */
+static int iw_set_mode(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	int ret;
+
+	cds_ssr_protect(__func__);
+	ret = __iw_set_mode(dev, info, wrqu, extra);
+	cds_ssr_unprotect(__func__);
+
+	return ret;
+}
+
+/**
+ * __iw_get_mode() - SIOCGIWMODE ioctl handler
+ * @dev: device upon which the ioctl was received
+ * @info: ioctl request information
+ * @wrqu: ioctl request data
+ * @extra: ioctl extra data
+ *
+ * Return: 0 on success, non-zero on error
+ */
+static int
+__iw_get_mode(struct net_device *dev, struct iw_request_info *info,
+	      union iwreq_data *wrqu, char *extra)
+{
+	hdd_wext_state_t *pWextState;
+	hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_context_t *hdd_ctx;
+	int ret;
+
+	ENTER_DEV(dev);
+
+	hdd_ctx = WLAN_HDD_GET_CTX(pAdapter);
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (0 != ret)
+		return ret;
+
+	pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
+
+	switch (pWextState->roamProfile.BSSType) {
+	case eCSR_BSS_TYPE_INFRASTRUCTURE:
+		hdd_debug("returns IW_MODE_INFRA");
+		wrqu->mode = IW_MODE_INFRA;
+		break;
+	case eCSR_BSS_TYPE_IBSS:
+	case eCSR_BSS_TYPE_START_IBSS:
+		hdd_debug("returns IW_MODE_ADHOC");
+		wrqu->mode = IW_MODE_ADHOC;
+		break;
+	case eCSR_BSS_TYPE_ANY:
+	default:
+		hdd_debug("returns IW_MODE_AUTO");
+		wrqu->mode = IW_MODE_AUTO;
+		break;
+	}
+
+	EXIT();
+	return 0;
+}
+
+/**
+ * iw_get_mode() - SSR wrapper for __iw_get_mode()
+ * @dev: pointer to net_device
+ * @info: pointer to iw_request_info
+ * @wrqu: pointer to iwreq_data
+ * @extra: pointer to extra ioctl payload
+ *
+ * Return: 0 on success, error number otherwise
+ */
+static int iw_get_mode(struct net_device *dev, struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra)
+{
+	int ret;
+
+	cds_ssr_protect(__func__);
+	ret = __iw_get_mode(dev, info, wrqu, extra);
+	cds_ssr_unprotect(__func__);
+
+	return ret;
+}
+
+/**
  * __iw_set_freq() - SIOCSIWFREQ ioctl handler
  * @dev: device upon which the ioctl was received
  * @info: ioctl request information
@@ -4841,8 +5021,7 @@ static int __iw_set_bitrate(struct net_device *dev,
 	hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	hdd_wext_state_t *pWextState;
 	hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
-	uint8_t supp_rates[WNI_CFG_SUPPORTED_RATES_11A_LEN +
-			   WNI_CFG_SUPPORTED_RATES_11B_LEN];
+	uint8_t supp_rates[WNI_CFG_SUPPORTED_RATES_11A_LEN];
 	uint32_t a_len = WNI_CFG_SUPPORTED_RATES_11A_LEN;
 	uint32_t b_len = WNI_CFG_SUPPORTED_RATES_11B_LEN;
 	uint32_t i, rate;
@@ -4878,8 +5057,7 @@ static int __iw_set_bitrate(struct net_device *dev,
 				     &a_len) == QDF_STATUS_SUCCESS)
 			    &&
 			    (sme_cfg_get_str(WLAN_HDD_GET_HAL_CTX(pAdapter),
-				     WNI_CFG_SUPPORTED_RATES_11B,
-				     supp_rates + a_len,
+				     WNI_CFG_SUPPORTED_RATES_11B, supp_rates,
 				     &b_len) == QDF_STATUS_SUCCESS)) {
 				for (i = 0; i < (b_len + a_len); ++i) {
 					/* supported rates returned is double
@@ -5804,8 +5982,9 @@ static void hdd_get_class_a_statistics_cb(void *stats, void *context)
 	tCsrGlobalClassAStatsInfo *returned_stats;
 
 	ENTER();
-	if (NULL == stats) {
-		hdd_err("Bad param, stats");
+	if ((NULL == stats) || (NULL == context)) {
+		hdd_err("Bad param, stats [%p] context [%p]",
+			stats, context);
 		return;
 	}
 
@@ -5871,6 +6050,7 @@ QDF_STATUS wlan_hdd_get_class_astats(hdd_adapter_t *pAdapter)
 		hdd_debug("Unable to retrieve Class A statistics");
 		goto return_cached_results;
 	}
+
 	/* request was sent -- wait for the response */
 	ret = hdd_request_wait_for_response(request);
 	if (ret) {
@@ -5882,7 +6062,7 @@ QDF_STATUS wlan_hdd_get_class_astats(hdd_adapter_t *pAdapter)
 	priv = hdd_request_priv(request);
 	pAdapter->hdd_stats.ClassA_stat = priv->class_a_stats;
 
-return_cached_results:
+	return_cached_results:
 	/*
 	 * either we never sent a request, we sent a request and
 	 * received a response or we sent a request and timed out.
@@ -5915,8 +6095,9 @@ static void hdd_get_station_statistics_cb(void *stats, void *context)
 	tCsrGlobalClassAStatsInfo *class_a_stats;
 	struct csr_per_chain_rssi_stats_info *per_chain_rssi_stats;
 
-	if (NULL == stats) {
-		hdd_err("Bad param, pStats [%p]", stats);
+	if ((NULL == stats) || (NULL == context)) {
+		hdd_err("Bad param, pStats [%p] pContext [%p]",
+			stats, context);
 		return;
 	}
 
@@ -7304,7 +7485,7 @@ static void hdd_get_temperature_cb(int temperature, void *context)
  * returned, otherwise a negative errno is returned.
  *
  */
-int wlan_hdd_get_temperature(hdd_adapter_t *p_adapter, int *temperature)
+int wlan_hdd_get_temperature(hdd_adapter_t *pAdapter, int *temperature)
 {
 	QDF_STATUS status;
 	int ret;
@@ -7317,7 +7498,7 @@ int wlan_hdd_get_temperature(hdd_adapter_t *p_adapter, int *temperature)
 	};
 
 	ENTER();
-	if (!p_adapter) {
+	if (NULL == pAdapter) {
 		hdd_err("pAdapter is NULL");
 		return -EPERM;
 	}
@@ -7328,7 +7509,7 @@ int wlan_hdd_get_temperature(hdd_adapter_t *p_adapter, int *temperature)
 		return -ENOMEM;
 	}
 	cookie = hdd_request_cookie(request);
-	status = sme_get_temperature(WLAN_HDD_GET_HAL_CTX(p_adapter),
+	status = sme_get_temperature(WLAN_HDD_GET_HAL_CTX(pAdapter),
 				     cookie, hdd_get_temperature_cb);
 	if (QDF_STATUS_SUCCESS != status) {
 		hdd_err("Unable to retrieve temperature");
@@ -7340,7 +7521,7 @@ int wlan_hdd_get_temperature(hdd_adapter_t *p_adapter, int *temperature)
 			/* update the adapter with the fresh results */
 			priv = hdd_request_priv(request);
 			if (priv->temperature)
-				p_adapter->temperature = priv->temperature;
+				pAdapter->temperature = priv->temperature;
 		}
 	}
 
@@ -7351,7 +7532,7 @@ int wlan_hdd_get_temperature(hdd_adapter_t *p_adapter, int *temperature)
 	 */
 	hdd_request_put(request);
 
-	*temperature = p_adapter->temperature;
+	*temperature = pAdapter->temperature;
 	EXIT();
 	return 0;
 }
@@ -8209,6 +8390,13 @@ static int __iw_setint_getnone(struct net_device *dev,
 		ret = wma_cli_set_command(pAdapter->sessionId,
 					  WMA_VDEV_TXRX_FWSTATS_ENABLE_CMDID,
 					  set_value, VDEV_CMD);
+// [LGE_CHANGE_S] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+        hdd_debug("WE_TXRX_FWSTATS_RESET val %d", set_value);
+        ret = wma_cli_set_command(pAdapter->sessionId,
+                      WMA_VDEV_TXRX_FWSTATS_RESET_CMDID,
+                      set_value, VDEV_CMD);
+// [LGE_CHANGE_E] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+
 		break;
 	}
 
@@ -8607,8 +8795,7 @@ static int __iw_setint_getnone(struct net_device *dev,
 				(set_value > CFG_ENABLE_MODULATED_DTIM_MAX)) {
 			hdd_err("Invalid gEnableModuleDTIM value %d",
 				set_value);
-			ret = -EINVAL;
-			goto free;
+			return -EINVAL;
 		} else {
 			hdd_ctx->config->enableModulatedDTIM = set_value;
 		}
@@ -8910,10 +9097,16 @@ static int __iw_setnone_getint(struct net_device *dev,
 	case WE_GET_NSS:
 	{
 		sme_get_config_param(hHal, sme_config);
-		*value = (sme_config->csrConfig.enable2x2 == 0) ? 1 : 2;
-		if (wma_is_current_hwmode_dbs())
-			*value = *value - 1;
-		hdd_debug("GET_NSS: Current NSS:%d", *value);
+                //LGE_CHANGE_S, 18.04.18, protocol-wifi@lge.com, Change DBS mode check in WCN399X
+		if (wma_is_current_hwmode_dbs()) {
+			hdd_debug("GET_NSS: Current mode is DBS.");
+			*value = 1;
+		}
+		else {
+			hdd_debug("GET_NSS: Current mode isn't DBS.");
+			*value = 0;
+		}
+                //LGE_CHANGE_E, 18.04.18, protocol-wifi@lge.com, Change DBS mode check in WCN399X
 		break;
 	}
 
@@ -11441,38 +11634,6 @@ int wlan_hdd_set_filter(hdd_context_t *hdd_ctx,
 }
 
 /**
- * validate_packet_filter_params_size() - Validate the size of the params rcvd
- * @priv_data: Pointer to the priv data from user space
- * @request: Pointer to the struct containing the copied data from user space
- *
- * Return: False on invalid length, true otherwise
- */
-static bool validate_packet_filter_params_size(struct pkt_filter_cfg *request,
-						uint16_t length)
-{
-	int max_params_size, rcvd_params_size;
-
-	max_params_size = HDD_MAX_CMP_PER_PACKET_FILTER *
-					sizeof(struct pkt_filter_param_cfg);
-
-	if (length < sizeof(struct pkt_filter_cfg) - max_params_size) {
-		hdd_err("Less than minimum number of arguments needed");
-		return false;
-	}
-
-	rcvd_params_size = request->num_params *
-					sizeof(struct pkt_filter_param_cfg);
-
-	if (length != sizeof(struct pkt_filter_cfg) -
-					max_params_size + rcvd_params_size) {
-		hdd_err("Arguments do not match the number of params provided");
-		return false;
-	}
-
-	return true;
-}
-
-/**
  * __iw_set_packet_filter_params() - set packet filter parameters in target
  * @dev: Pointer to netdev
  * @info: Pointer to iw request info
@@ -11528,16 +11689,9 @@ static int __iw_set_packet_filter_params(struct net_device *dev,
 	/* copy data using copy_from_user */
 	request = mem_alloc_copy_from_user_helper(priv_data.pointer,
 						   priv_data.length);
-
 	if (NULL == request) {
 		hdd_err("mem_alloc_copy_from_user_helper fail");
 		return -ENOMEM;
-	}
-
-	if (!validate_packet_filter_params_size(request, priv_data.length)) {
-		hdd_err("Invalid priv data length %d", priv_data.length);
-		qdf_mem_free(request);
-		return -EINVAL;
 	}
 
 	if (request->filter_action == HDD_RCV_FILTER_SET)
@@ -11843,6 +11997,8 @@ static int __iw_set_pno(struct net_device *dev,
 	if (ret)
 		return ret;
 
+	hdd_debug("PNO data len %d data %s", wrqu->data.length, extra);
+
 	/* making sure argument string ends with '\0' */
 	len = (wrqu->data.length + 1);
 	data = qdf_mem_malloc(len);
@@ -11853,8 +12009,6 @@ static int __iw_set_pno(struct net_device *dev,
 	qdf_mem_zero(data, len);
 	qdf_mem_copy(data, extra, (len-1));
 	ptr = data;
-
-	hdd_debug("PNO data len %d data %s", wrqu->data.length, data);
 
 	request.enable = 0;
 	request.ucNetworksCount = 0;
@@ -12449,19 +12603,9 @@ static int __iw_set_two_ints_getnone(struct net_device *dev,
 		ret = wlan_hdd_set_mon_chan(pAdapter, value[1], value[2]);
 		break;
 	case WE_SET_WLAN_SUSPEND:
-		if (!hdd_ctx->config->is_unit_test_framework_enabled) {
-			hdd_warn_ratelimited(HDD_UT_SUSPEND_RESUME_LOG_RL,
-					     "UT suspend is disabled");
-			return 0;
-		}
 		ret = hdd_wlan_fake_apps_suspend(hdd_ctx->wiphy, dev);
 		break;
 	case WE_SET_WLAN_RESUME:
-		if (!hdd_ctx->config->is_unit_test_framework_enabled) {
-			hdd_warn_ratelimited(HDD_UT_SUSPEND_RESUME_LOG_RL,
-					     "UT resume is disabled");
-			return 0;
-		}
 		ret = hdd_wlan_fake_apps_resume(hdd_ctx->wiphy, dev);
 		break;
 	case WE_LOG_BUFFER: {
@@ -12503,8 +12647,8 @@ static const iw_handler we_handler[] = {
 	(iw_handler) NULL,      /* SIOCGIWNWID */
 	(iw_handler) iw_set_freq,       /* SIOCSIWFREQ */
 	(iw_handler) iw_get_freq,       /* SIOCGIWFREQ */
-	(iw_handler) NULL,      /* SIOCSIWMODE */
-	(iw_handler) NULL,      /* SIOCGIWMODE */
+	(iw_handler) iw_set_mode,       /* SIOCSIWMODE */
+	(iw_handler) iw_get_mode,       /* SIOCGIWMODE */
 	(iw_handler) NULL,      /* SIOCSIWSENS */
 	(iw_handler) NULL,      /* SIOCGIWSENS */
 	(iw_handler) NULL,      /* SIOCSIWRANGE */

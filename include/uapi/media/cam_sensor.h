@@ -131,6 +131,7 @@ struct cam_cmd_ois_info {
 	uint8_t               cmd_type;
 	uint8_t               ois_fw_flag;
 	uint8_t               is_ois_calib;
+	uint8_t               is_ois_aat; /* LGE_CHANGE, OIS AAT, hongs.lee@lge.com */
 	char                  ois_name[MAX_OIS_NAME_SIZE];
 	struct cam_ois_opcode opcode;
 } __attribute__((packed));

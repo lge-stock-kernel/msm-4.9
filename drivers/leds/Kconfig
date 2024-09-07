@@ -706,6 +706,11 @@ config LEDS_QPNP_HAPTICS
 	  module provides haptic feedback for user actions such as a long press
 	  on the touch screen.
 
+config LEDS_LGE_EMOTIONAL
+        tristate "Support for EMOTIONAL LEDs using PMI8998"
+	help
+	  This enables support for emotional LED using PMI8998
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 

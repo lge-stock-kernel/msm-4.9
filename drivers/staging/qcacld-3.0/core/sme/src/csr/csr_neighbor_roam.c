@@ -145,20 +145,14 @@ QDF_STATUS csr_neighbor_roam_update_fast_roaming_enabled(tpAniSirGlobal mac_ctx,
 
 	switch (neighbor_roam_info->neighborRoamState) {
 	case eCSR_NEIGHBOR_ROAM_STATE_CONNECTED:
-		qdf_status = sme_acquire_global_lock(&mac_ctx->sme);
-		if (QDF_IS_STATUS_SUCCESS(qdf_status)) {
-			if (fast_roam_enabled) {
-				csr_roam_offload_scan(mac_ctx, session_id,
-						ROAM_SCAN_OFFLOAD_START,
-						REASON_CONNECT);
-			} else {
-				csr_roam_offload_scan(mac_ctx, session_id,
-						ROAM_SCAN_OFFLOAD_STOP,
-						REASON_DISCONNECTED);
-			}
-			sme_release_global_lock(&mac_ctx->sme);
+		if (fast_roam_enabled) {
+			csr_roam_offload_scan(mac_ctx, session_id,
+					      ROAM_SCAN_OFFLOAD_START,
+					      REASON_CONNECT);
 		} else {
-			sme_err("Failed to acquire SME lock");
+			csr_roam_offload_scan(mac_ctx, session_id,
+					      ROAM_SCAN_OFFLOAD_STOP,
+					      REASON_DISCONNECTED);
 		}
 	break;
 	case eCSR_NEIGHBOR_ROAM_STATE_INIT:
@@ -995,7 +989,7 @@ static void csr_neighbor_roam_info_ctx_init(
 
 	/* Based on the auth scheme tell if we are 11r */
 	if (csr_is_auth_type11r
-		(pMac, session->connectedProfile.AuthType,
+		(session->connectedProfile.AuthType,
 		session->connectedProfile.MDID.mdiePresent)) {
 		if (pMac->roam.configParam.isFastTransitionEnabled)
 			init_ft_flag = true;

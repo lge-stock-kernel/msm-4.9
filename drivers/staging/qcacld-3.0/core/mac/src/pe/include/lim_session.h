@@ -478,7 +478,6 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	/* flag to indicate country code in beacon */
 	uint8_t country_info_present;
 	uint8_t nss;
-	bool nss_forced_1x1;
 	bool add_bss_failed;
 	/* To hold OBSS Scan IE Parameters */
 	struct obss_scanparam obss_ht40_scanparam;
@@ -504,7 +503,7 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	uint8_t deauthmsgcnt;
 	uint8_t disassocmsgcnt;
 	bool enable_bcast_probe_rsp;
-	uint8_t ht_client_cnt;
+	uint8_t ht_client_cnt;  // 17.06.28, neo-wifi@lge.com, Assoc response 2x2 in SAP mode, QCT Case 03003077
 	bool force_24ghz_in_ht20;
 	bool ch_switch_in_progress;
 	/* previous auth frame's sequence number */
@@ -513,7 +512,6 @@ typedef struct sPESession       /* Added to Support BT-AMP */
 	bool recvd_deauth_while_roaming;
 	bool recvd_disassoc_while_roaming;
 	bool deauth_disassoc_rc;
-	int8_t def_max_tx_pwr;
 } tPESession, *tpPESession;
 
 /*-------------------------------------------------------------------------

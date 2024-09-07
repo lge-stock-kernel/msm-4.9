@@ -102,4 +102,11 @@ config QPNP_TYPEC
 	  USB power-delivery. The driver adds support to report these type-C
 	  parameters via the power-supply framework.
 
+config LGE_PM_BATT_ID_ADC
+    bool "LGE BATT ID ADC"
+    default n
+    depends on LGE_PM
+    help
+      For distinguish battery id by adc value
+
 endmenu

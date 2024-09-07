@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -68,6 +68,10 @@ static void ufs_qcom_ice_error_cb(void *host_ctrl, u32 error)
 
 	dev_err(qcom_host->hba->dev, "%s: Error in ice operation 0x%x",
 		__func__, error);
+#ifdef CONFIG_MACH_LGE
+	dev_err(qcom_host->hba->dev, " [CCAudit] %s: Error in ice operation 0x%x",
+		__func__, error);
+#endif
 
 	if (qcom_host->ice.state == UFS_QCOM_ICE_STATE_ACTIVE)
 		qcom_host->ice.state = UFS_QCOM_ICE_STATE_DISABLED;

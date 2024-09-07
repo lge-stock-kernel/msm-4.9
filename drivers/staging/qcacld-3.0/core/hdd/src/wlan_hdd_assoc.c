@@ -291,49 +291,6 @@ hdd_conn_get_connected_cipher_algo(hdd_station_ctx_t *pHddStaCtx,
 	return fConnected;
 }
 
-hdd_adapter_t *hdd_get_sta_connection_in_progress(hdd_context_t *hdd_ctx)
-{
-	hdd_adapter_list_node_t *adapter_node = NULL, *next = NULL;
-	hdd_adapter_t *adapter = NULL;
-	QDF_STATUS status;
-	hdd_station_ctx_t *hdd_sta_ctx;
-
-	if (!hdd_ctx) {
-		hdd_err("HDD context is NULL");
-		return NULL;
-	}
-
-	status = hdd_get_front_adapter(hdd_ctx, &adapter_node);
-	while (NULL != adapter_node && QDF_STATUS_SUCCESS == status) {
-		adapter = adapter_node->pAdapter;
-		if (!adapter)
-			goto end;
-
-		hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
-		if ((QDF_STA_MODE == adapter->device_mode) ||
-		    (QDF_P2P_CLIENT_MODE == adapter->device_mode) ||
-		    (QDF_P2P_DEVICE_MODE == adapter->device_mode)) {
-			if (eConnectionState_Connecting ==
-			    hdd_sta_ctx->conn_info.connState) {
-				hdd_debug("session_id %d: Connection is in progress",
-					  adapter->sessionId);
-				return adapter;
-			} else if ((eConnectionState_Associated ==
-				   hdd_sta_ctx->conn_info.connState) &&
-				   sme_is_sta_key_exchange_in_progress(
-				   hdd_ctx->hHal, adapter->sessionId)) {
-				hdd_debug("session_id %d: Key exchange is in progress",
-					  adapter->sessionId);
-				return adapter;
-			}
-		}
-end:
-		status = hdd_get_next_adapter(hdd_ctx, adapter_node, &next);
-		adapter_node = next;
-	}
-	return NULL;
-}
-
 /**
  * hdd_remove_beacon_filter() - remove beacon filter
  * @adapter: Pointer to the hdd adapter
@@ -1577,8 +1534,7 @@ static QDF_STATUS hdd_dis_connect_handler(hdd_adapter_t *pAdapter,
 				     WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 				     WLAN_CONTROL_PATH);
 
-	if (hdd_ipa_is_enabled(pHddCtx) &&
-	    (pHddStaCtx->conn_info.staId[0] != HDD_WLAN_INVALID_STA_ID))
+	if (hdd_ipa_is_enabled(pHddCtx))
 		hdd_ipa_wlan_evt(pAdapter, pHddStaCtx->conn_info.staId[0],
 				HDD_IPA_STA_DISCONNECT,
 				pHddStaCtx->conn_info.bssId.bytes);
@@ -1922,7 +1878,6 @@ QDF_STATUS hdd_roam_register_sta(hdd_adapter_t *pAdapter,
 	/* Register the vdev transmit and receive functions */
 	qdf_mem_zero(&txrx_ops, sizeof(txrx_ops));
 	txrx_ops.rx.rx = hdd_rx_packet_cbk;
-	txrx_ops.rx.stats_rx = hdd_tx_rx_collect_connectivity_stats_info;
 	ol_txrx_vdev_register(
 		 ol_txrx_get_vdev_from_vdev_id(pAdapter->sessionId),
 		 pAdapter, &txrx_ops);
@@ -3133,22 +3088,12 @@ static QDF_STATUS hdd_association_completion_handler(hdd_adapter_t *pAdapter,
 			hdd_conn_set_connection_state(pAdapter,
 					eConnectionState_NotConnected);
 		}
-
 		hdd_wmm_init(pAdapter);
 
 		hdd_debug("Disabling queues");
 		wlan_hdd_netif_queue_control(pAdapter,
 					   WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 					   WLAN_CONTROL_PATH);
-		/*
-		 * if hddDisconInProgress is set and roamResult is
-		 * eCSR_ROAM_RESULT_SCAN_FOR_SSID_FAILURE that mean HDD is
-		 * waiting on disconnect_comp_var so unblock anyone waiting for
-		 * disconnect to complete.
-		 */
-		if ((roamResult == eCSR_ROAM_RESULT_SCAN_FOR_SSID_FAILURE) &&
-		    hddDisconInProgress)
-			complete(&pAdapter->disconnect_comp_var);
 	}
 
 	if (QDF_STATUS_SUCCESS != cds_check_and_restart_sap(
@@ -3744,7 +3689,6 @@ QDF_STATUS hdd_roam_register_tdlssta(hdd_adapter_t *pAdapter,
 	/* Register the vdev transmit and receive functions */
 	qdf_mem_zero(&txrx_ops, sizeof(txrx_ops));
 	txrx_ops.rx.rx = hdd_rx_packet_cbk;
-	txrx_ops.rx.stats_rx = hdd_tx_rx_collect_connectivity_stats_info;
 	ol_txrx_vdev_register(
 		 ol_txrx_get_vdev_from_vdev_id(pAdapter->sessionId),
 		 pAdapter, &txrx_ops);
@@ -4929,7 +4873,6 @@ hdd_sme_roam_callback(void *pContext, tCsrRoamInfo *pRoamInfo, uint32_t roamId,
 	hdd_station_ctx_t *pHddStaCtx = NULL;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct cfg80211_bss *bss_status;
-	hdd_context_t *pHddCtx;
 
 	hdd_debug("CSR Callback: status= %d result= %d roamID=%d",
 		 roamStatus, roamResult, roamId);
@@ -4942,7 +4885,6 @@ hdd_sme_roam_callback(void *pContext, tCsrRoamInfo *pRoamInfo, uint32_t roamId,
 
 	pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
 	pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
-	pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
 
 	/* Omitting eCSR_ROAM_UPDATE_SCAN_RESULT as this is too frequent */
 	if (eCSR_ROAM_UPDATE_SCAN_RESULT != roamStatus)
@@ -5280,7 +5222,6 @@ hdd_sme_roam_callback(void *pContext, tCsrRoamInfo *pRoamInfo, uint32_t roamId,
 		pAdapter->roam_ho_fail = false;
 		pHddStaCtx->ft_carrier_on = false;
 		complete(&pAdapter->roaming_comp_var);
-		schedule_delayed_work(&pHddCtx->roc_req_work, 0);
 		break;
 
 	default:
@@ -5489,12 +5430,11 @@ static int32_t hdd_process_genie(hdd_adapter_t *pAdapter,
 #endif
 				 uint16_t gen_ie_len, uint8_t *gen_ie)
 {
-	uint32_t ret;
-	uint8_t *pRsnIe;
-	uint16_t RSNIeLen;
+	tHalHandle halHandle = WLAN_HDD_GET_HAL_CTX(pAdapter);
 	tDot11fIERSN dot11RSNIE;
 	tDot11fIEWPA dot11WPAIE;
-	tHalHandle halHandle = WLAN_HDD_GET_HAL_CTX(pAdapter);
+	uint8_t *pRsnIe;
+	uint16_t RSNIeLen;
 
 	/*
 	 * Clear struct of tDot11fIERSN and tDot11fIEWPA specifically
@@ -5516,13 +5456,8 @@ static int32_t hdd_process_genie(hdd_adapter_t *pAdapter,
 		pRsnIe = gen_ie + 2;
 		RSNIeLen = gen_ie_len - 2;
 		/* Unpack the RSN IE */
-		ret = dot11f_unpack_ie_rsn((tpAniSirGlobal) halHandle,
-					   pRsnIe, RSNIeLen, &dot11RSNIE,
-					   false);
-		if (DOT11F_FAILED(ret)) {
-			hdd_err("unpack failed, ret: 0x%x", ret);
-			return -EINVAL;
-		}
+		dot11f_unpack_ie_rsn((tpAniSirGlobal) halHandle,
+				     pRsnIe, RSNIeLen, &dot11RSNIE, false);
 		/* Copy out the encryption and authentication types */
 		hdd_debug("pairwise cipher suite count: %d",
 			 dot11RSNIE.pwise_cipher_suite_count);
@@ -5555,12 +5490,8 @@ static int32_t hdd_process_genie(hdd_adapter_t *pAdapter,
 		pRsnIe = gen_ie + 2 + 4;
 		RSNIeLen = gen_ie_len - (2 + 4);
 		/* Unpack the WPA IE */
-		ret = dot11f_unpack_ie_wpa((tpAniSirGlobal) halHandle,
+		dot11f_unpack_ie_wpa((tpAniSirGlobal) halHandle,
 				     pRsnIe, RSNIeLen, &dot11WPAIE, false);
-		if (DOT11F_FAILED(ret)) {
-			hdd_err("unpack failed, ret: 0x%x", ret);
-			return -EINVAL;
-		}
 		/* Copy out the encryption and authentication types */
 		hdd_debug("WPA unicast cipher suite count: %d",
 			 dot11WPAIE.unicast_cipher_count);

@@ -2,7 +2,7 @@
  * drivers/mmc/host/sdhci-msm.c - Qualcomm Technologies, Inc. MSM SDHCI Platform
  * driver source file
  *
- * Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2466,6 +2466,23 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_MACH_LGE
+/*
+ * Reset vreg by ensuring it is off during probe. A call
+ * to enable vreg is needed to balance disable vreg
+ */
+static int sdhci_msm_vreg_reset(struct sdhci_msm_pltfm_data *pdata)
+{
+	int ret;
+
+	ret = sdhci_msm_setup_vreg(pdata, 1, true);
+	if (ret)
+		return ret;
+	ret = sdhci_msm_setup_vreg(pdata, 0, true);
+	return ret;
+}
+#endif
+
 /* This init function should be called only once for each SDHC slot */
 static int sdhci_msm_vreg_init(struct device *dev,
 				struct sdhci_msm_pltfm_data *pdata,
@@ -2500,6 +2517,15 @@ static int sdhci_msm_vreg_init(struct device *dev,
 		if (ret)
 			goto vdd_reg_deinit;
 	}
+
+#ifdef CONFIG_MACH_LGE
+	/*
+	 * vreg reset is needed to recognize card insertion at early stage (0~4sec)
+	 * caused by pin shortage with sim tray.
+	*/
+	if (!pdata->nonremovable)
+		ret = sdhci_msm_vreg_reset(pdata);
+#endif
 
 	if (ret)
 		dev_err(dev, "vreg reset failed (%d)\n", ret);
@@ -4198,10 +4224,11 @@ void sdhci_msm_pm_qos_cpu_init(struct sdhci_host *host,
 		group->latency = PM_QOS_DEFAULT_VALUE;
 		pm_qos_add_request(&group->req, PM_QOS_CPU_DMA_LATENCY,
 			group->latency);
-		pr_info("%s (): voted for group #%d (mask=0x%lx) latency=%d\n",
+		pr_info("%s (): voted for group #%d (mask=0x%lx) latency=%d (0x%p)\n",
 			__func__, i,
 			group->req.cpus_affine.bits[0],
-			group->latency);
+			group->latency,
+			&latency[i].latency[SDHCI_PERFORMANCE_MODE]);
 	}
 	msm_host->pm_qos_prev_cpu = -1;
 	msm_host->pm_qos_group_enable = true;
@@ -4762,6 +4789,8 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 			goto vreg_deinit;
 		}
 		writel_relaxed(readl_relaxed(tlmm_mem) | 0x2, tlmm_mem);
+		dev_dbg(&pdev->dev, "tlmm reg %pa value 0x%08x\n",
+				&tlmm_memres->start, readl_relaxed(tlmm_mem));
 	}
 
 	/*
@@ -4863,6 +4892,10 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 
 	host->quirks2 |= SDHCI_QUIRK2_IGN_DATA_END_BIT_ERROR;
 
+#ifdef CONFIG_MACH_LGE
+	/* disable led control */
+	host->quirks2 |= SDHCI_QUIRK2_BROKEN_LED_CONTROL;
+#endif
 	/* Setup PWRCTL irq */
 	msm_host->pwr_irq = platform_get_irq_byname(pdev, "pwr_irq");
 	if (msm_host->pwr_irq < 0) {
@@ -4896,7 +4929,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= msm_host->pdata->caps2;
 	msm_host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 	msm_host->mmc->caps2 |= MMC_CAP2_HS400_POST_TUNING;
+#ifdef CONFIG_LGE_MMC_CLK_SCALE_DISABLE
+	msm_host->mmc->caps2 &= ~MMC_CAP2_CLK_SCALE;
+#else
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
+#endif
 	msm_host->mmc->caps2 |= MMC_CAP2_SANITIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_MAX_DISCARD_SIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;

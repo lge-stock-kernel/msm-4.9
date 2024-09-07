@@ -150,7 +150,7 @@ alternative_if ARM64_HAS_PAN
 alternative_else_nop_endif
 
 	.if	\el != 0
-	mrs	x21, ttbr1_el1
+	mrs	x21, ttbr0_el1
 	tst	x21, #TTBR_ASID_MASK		// Check for the reserved ASID
 	orr	x23, x23, #PSR_PAN_BIT		// Set the emulated PAN in the saved SPSR
 	b.eq	1f				// TTBR0 access already disabled
@@ -601,9 +601,9 @@ el0_sync_compat:
 	cmp	x24, #ESR_ELx_EC_UNKNOWN	// unknown exception in EL0
 	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP15_32	// CP15 MRC/MCR trap
-	b.eq	el0_cp15_32_compat
+	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP15_64	// CP15 MRRC/MCRR trap
-	b.eq	el0_cp15_64_compat
+	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP14_MR	// CP14 MRC/MCR trap
 	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP14_LS	// CP14 LDC/STC trap
@@ -621,28 +621,6 @@ el0_svc_compat:
 	uxtw	scno, w7			// syscall number in w7 (r7)
 	mov     sc_nr, #__NR_compat_syscalls
 	b	el0_svc_naked
-
-el0_cp15_32_compat:
-	/*
-	 * AArch32 CP15 MRC/MCR trap handling
-	 */
-	enable_dbg_and_irq
-	ct_user_exit
-	mov	x0, x25
-	mov	x1, sp
-	bl	do_cp15_32_instr_compat
-	b	ret_to_user
-
-el0_cp15_64_compat:
-	/*
-	 * AArch32 CP15 MRRC/MCRR trap handling
-	 */
-	enable_dbg_and_irq
-	ct_user_exit
-	mov	x0, x25
-	mov	x1, sp
-	bl	do_cp15_64_instr_compat
-	b	ret_to_user
 
 	.align	6
 el0_irq_compat:

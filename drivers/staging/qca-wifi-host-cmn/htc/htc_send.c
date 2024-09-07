@@ -2193,17 +2193,21 @@ void htc_process_credit_rpt(HTC_TARGET *target, HTC_CREDIT_REPORT *pRpt,
 		}
 
 #endif
+//CR2204248, (18.03.15) protocol-wifi@lge.com, [START] Fix wcnss crash (case 03385351) 
+//		pEndpoint->TxCredits += rpt_credits;
 
 		if (pEndpoint->service_id == WMI_CONTROL_SVC) {
 			LOCK_HTC_CREDIT(target);
 			htc_credit_record(HTC_PROCESS_CREDIT_REPORT,
-					  pEndpoint->TxCredits + rpt_credits,
+//					  pEndpoint->TxCredits,
+                                          pEndpoint->TxCredits + rpt_credits, 
 					  HTC_PACKET_QUEUE_DEPTH(&pEndpoint->
 								 TxQueue));
 			UNLOCK_HTC_CREDIT(target);
 		}
 
-		pEndpoint->TxCredits += rpt_credits;
+                pEndpoint->TxCredits += rpt_credits; 
+//CR2204248, (18.03.15) protocol-wifi@lge.com, [END] Fix wcnss crash (case 03385351)
 
 		if (pEndpoint->TxCredits
 		    && HTC_PACKET_QUEUE_DEPTH(&pEndpoint->TxQueue)) {

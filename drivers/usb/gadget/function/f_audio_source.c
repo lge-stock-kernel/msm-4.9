@@ -17,7 +17,6 @@
 #include <linux/device.h>
 #include <linux/usb/audio.h>
 #include <linux/wait.h>
-#include <linux/pm_qos.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/pcm.h>
@@ -35,7 +34,11 @@
 #define IN_EP_MAX_PACKET_SIZE 256
 
 /* Number of requests to allocate */
+#ifdef CONFIG_LGE_USB_GADGET
+#define IN_EP_REQ_COUNT 8
+#else
 #define IN_EP_REQ_COUNT 4
+#endif
 
 #define AUDIO_AC_INTERFACE	0
 #define AUDIO_AS_INTERFACE	1
@@ -296,8 +299,6 @@ struct audio_dev {
 	/* number of frames sent since start_time */
 	s64				frames_sent;
 	struct audio_source_config	*config;
-	/* for creating and issuing QoS requests */
-	struct pm_qos_request pm_qos;
 };
 
 static inline struct audio_dev *func_to_audio(struct usb_function *f)
@@ -396,7 +397,24 @@ static void audio_send(struct audio_dev *audio)
 	s64 msecs;
 	s64 frames;
 	ktime_t now;
+#ifdef CONFIG_LGE_USB_GADGET
+	unsigned long flags;
 
+	spin_lock_irqsave(&audio->lock, flags);
+	/* audio->substream will be null if we have been closed */
+	if (!audio->substream) {
+		spin_unlock_irqrestore(&audio->lock, flags);
+		return;
+	}
+	/* audio->buffer_pos will be null if we have been stopped */
+	if (!audio->buffer_pos) {
+		spin_unlock_irqrestore(&audio->lock, flags);
+		return;
+	}
+
+	runtime = audio->substream->runtime;
+	spin_unlock_irqrestore(&audio->lock, flags);
+#else
 	/* audio->substream will be null if we have been closed */
 	if (!audio->substream)
 		return;
@@ -405,6 +423,7 @@ static void audio_send(struct audio_dev *audio)
 		return;
 
 	runtime = audio->substream->runtime;
+#endif
 
 	/* compute number of frames to send */
 	now = ktime_get();
@@ -427,8 +446,28 @@ static void audio_send(struct audio_dev *audio)
 
 	while (frames > 0) {
 		req = audio_req_get(audio);
+#ifdef CONFIG_LGE_USB_GADGET
+		spin_lock_irqsave(&audio->lock, flags);
+		if (!req) {
+			spin_unlock_irqrestore(&audio->lock, flags);
+			break;
+		}
+		/* audio->substream will be null if we have been closed */
+		if (!audio->substream) {
+			spin_unlock_irqrestore(&audio->lock, flags);
+			return;
+		}
+		/* audio->buffer_pos will be null if we have been stopped */
+		if (!audio->buffer_pos) {
+			spin_unlock_irqrestore(&audio->lock, flags);
+			pr_debug("%s: audio->buffer_pos is NULL, return!\n", __func__);
+			audio_req_put(audio, req);
+			return;
+		}
+#else
 		if (!req)
 			break;
+#endif
 
 		length = frames_to_bytes(runtime, frames);
 		if (length > IN_EP_MAX_PACKET_SIZE)
@@ -454,6 +493,9 @@ static void audio_send(struct audio_dev *audio)
 		}
 
 		req->length = length;
+#ifdef CONFIG_LGE_USB_GADGET
+		spin_unlock_irqrestore(&audio->lock, flags);
+#endif
 		ret = usb_ep_queue(audio->in_ep, req, GFP_ATOMIC);
 		if (ret < 0) {
 			pr_err("usb_ep_queue failed ret: %d\n", ret);
@@ -597,36 +639,12 @@ static int audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 	pr_debug("audio_set_alt intf %d, alt %d\n", intf, alt);
 
-	if (!alt) {
-		usb_ep_disable(audio->in_ep);
-		return 0;
-	}
-
 	ret = config_ep_by_speed(cdev->gadget, f, audio->in_ep);
-	if (ret) {
-		audio->in_ep->desc = NULL;
-		pr_err("config_ep fail for audio ep ret %d\n", ret);
+	if (ret)
 		return ret;
-	}
-	ret = usb_ep_enable(audio->in_ep);
-	if (ret) {
-		audio->in_ep->desc = NULL;
-		pr_err("failed to enable audio ret %d\n", ret);
-		return ret;
-	}
 
+	usb_ep_enable(audio->in_ep);
 	return 0;
-}
-
-/*
- * Because the data interface supports multiple altsettings,
- * this audio_source function *MUST* implement a get_alt() method.
- */
-static int audio_get_alt(struct usb_function *f, unsigned int intf)
-{
-	struct audio_dev	*audio = func_to_audio(f);
-
-	return audio->in_ep->enabled ? 1 : 0;
 }
 
 static void audio_disable(struct usb_function *f)
@@ -795,10 +813,6 @@ static int audio_pcm_open(struct snd_pcm_substream *substream)
 	runtime->hw.channels_max = 2;
 
 	audio->substream = substream;
-
-	/* Add the QoS request and set the latency to 0 */
-	pm_qos_add_request(&audio->pm_qos, PM_QOS_CPU_DMA_LATENCY, 0);
-
 	return 0;
 }
 
@@ -806,9 +820,6 @@ static int audio_pcm_close(struct snd_pcm_substream *substream)
 {
 	struct audio_dev *audio = substream->private_data;
 	unsigned long flags;
-
-	/* Remove the QoS request */
-	pm_qos_remove_request(&audio->pm_qos);
 
 	spin_lock_irqsave(&audio->lock, flags);
 
@@ -893,7 +904,6 @@ static struct audio_dev _audio_dev = {
 		.bind = audio_bind,
 		.unbind = audio_unbind,
 		.set_alt = audio_set_alt,
-		.get_alt = audio_get_alt,
 		.setup = audio_setup,
 		.disable = audio_disable,
 		.free_func = audio_free_func,

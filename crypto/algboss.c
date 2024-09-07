@@ -11,6 +11,9 @@
  */
 
 #include <crypto/internal/aead.h>
+#ifdef CONFIG_CRYPTO_CCMODE
+#include <linux/cc_mode.h>
+#endif
 #include <linux/completion.h>
 #include <linux/ctype.h>
 #include <linux/err.h>
@@ -214,8 +217,13 @@ static int cryptomgr_test(void *data)
 	u32 type = param->type;
 	int err = 0;
 
-#ifdef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
+#if defined (CONFIG_CRYPTO_MANAGER_DISABLE_TESTS) && !defined (CONFIG_CRYPTO_CCMODE)
 	goto skiptest;
+#endif
+
+#ifdef CONFIG_CRYPTO_CCMODE
+	if (!cc_mode)
+		goto skiptest;
 #endif
 
 	if (type & CRYPTO_ALG_TESTED)

@@ -50,28 +50,9 @@ static void mmc_host_classdev_release(struct device *dev)
 	kfree(host);
 }
 
-static int mmc_host_prepare(struct device *dev)
-{
-	/*
-	 * Since mmc_host is a virtual device, we don't have to do anything.
-	 * If we return a positive value, the pm framework will consider that
-	 * the runtime suspend and system suspend of this device is same and
-	 * will set direct_complete flag as true. We don't want this as the
-	 * mmc_host always has positive disable_depth and setting the flag
-	 * will not speed up the suspend process.
-	 * So return 0.
-	 */
-	return 0;
-}
-
-static const struct dev_pm_ops mmc_pm_ops = {
-	.prepare = mmc_host_prepare,
-};
-
 static struct class mmc_host_class = {
 	.name		= "mmc_host",
 	.dev_release	= mmc_host_classdev_release,
-	.pm		= &mmc_pm_ops,
 };
 
 int mmc_register_host_class(void)
@@ -377,6 +358,29 @@ bool mmc_host_may_gate_card(struct mmc_card *card)
 static inline bool mmc_host_clk_gate_wq_init(struct mmc_host *host)
 {
 	return true;
+}
+#endif
+
+#ifdef CONFIG_MACH_LGE
+static ssize_t cd_status_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    struct mmc_host *host = cls_dev_to_mmc_host(dev);
+
+    return snprintf(buf, PAGE_SIZE, "%d\n", mmc_gpio_get_cd(host));
+}
+
+
+DEVICE_ATTR(cd_status, S_IRUGO,
+        cd_status_show, NULL);
+
+static inline void mmc_host_cd_status_sysfs_init(struct mmc_host *host)
+{
+
+
+    if (device_create_file(&host->class_dev, &dev_attr_cd_status))
+        pr_err("%s: Failed to create clkgate_delay sysfs entry\n",
+                mmc_hostname(host));
 }
 #endif
 
@@ -972,6 +976,10 @@ int mmc_add_host(struct mmc_host *host)
 
 #ifdef CONFIG_DEBUG_FS
 	mmc_add_host_debugfs(host);
+#endif
+#ifdef CONFIG_MACH_LGE
+	if (!(host->caps & MMC_CAP_NONREMOVABLE))
+		mmc_host_cd_status_sysfs_init(host);
 #endif
 	mmc_host_clk_sysfs_init(host);
 	mmc_trace_init(host);

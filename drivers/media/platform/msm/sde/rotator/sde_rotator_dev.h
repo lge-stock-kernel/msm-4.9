@@ -237,6 +237,9 @@ struct sde_rotator_device {
 	u32 open_timeout;
 	wait_queue_head_t open_wq;
 	struct sde_rotator_ctx *excl_ctx;
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	struct notifier_block notifier;
+#endif
 };
 
 static inline

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -253,7 +253,6 @@ static int hdd_ocb_register_sta(hdd_adapter_t *adapter)
 	/* Register the vdev transmit and receive functions */
 	qdf_mem_zero(&txrx_ops, sizeof(txrx_ops));
 	txrx_ops.rx.rx = hdd_rx_packet_cbk;
-	txrx_ops.rx.stats_rx = hdd_tx_rx_collect_connectivity_stats_info;
 	ol_txrx_vdev_register(
 		 ol_txrx_get_vdev_from_vdev_id(adapter->sessionId),
 		 adapter, &txrx_ops);
@@ -406,17 +405,16 @@ static int hdd_ocb_set_config_req(hdd_adapter_t *adapter,
 	}
 	cookie = hdd_request_cookie(hdd_request);
 
-	hdd_debug("Disabling queues");
+	hdd_info("Disabling queues");
 	wlan_hdd_netif_queue_control(adapter,
 				     WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 				     WLAN_CONTROL_PATH);
 
+	/* Call the SME API to set the config */
 	status = sme_ocb_set_config(hdd_ctx->hHal, cookie,
-				    hdd_ocb_set_config_callback,
-				    config);
+				    hdd_ocb_set_config_callback, config);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to set channel config.");
-		/* Convert from eHalStatus to errno */
+		hdd_err("Error calling SME function.");
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
@@ -441,8 +439,8 @@ static int hdd_ocb_set_config_req(hdd_adapter_t *adapter,
 	 */
 	if (!hdd_ocb_register_sta(adapter))
 		wlan_hdd_netif_queue_control(adapter,
-					     WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
-					     WLAN_CONTROL_PATH);
+					WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
+					WLAN_CONTROL_PATH);
 
 	/* fall through */
 end:
@@ -1318,6 +1316,7 @@ static void hdd_ocb_get_tsf_timer_callback(void *context_ptr,
 		return;
 	}
 
+	priv = hdd_request_priv(hdd_request);
 	if (response) {
 		priv->response = *response;
 		priv->status = 0;
@@ -1429,7 +1428,7 @@ __wlan_hdd_cfg80211_ocb_get_tsf_timer(struct wiphy *wiphy,
 				       hdd_ocb_get_tsf_timer_callback,
 				       &request);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to get tsf timer.");
+		hdd_err("Error calling SME function.");
 		rc = qdf_status_to_os_return(status);
 		goto end;
 	}
@@ -1641,8 +1640,10 @@ static int __wlan_hdd_cfg80211_dcc_get_stats(struct wiphy *wiphy,
 	}
 
 	/* Parse the netlink message */
-	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_MAX, data,
-			  data_len, qca_wlan_vendor_dcc_get_stats)) {
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_GET_STATS_MAX,
+		      data,
+		      data_len,
+		      qca_wlan_vendor_dcc_get_stats)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}
@@ -1839,10 +1840,11 @@ static void hdd_dcc_update_ndl_callback(void *context_ptr, void *response_ptr)
 		return;
 	}
 	priv = hdd_request_priv(hdd_request);
-	if (response && (0 == response->status))
+	if (response && (0 == response->status)) {
 		priv->status = 0;
-	else
+	} else {
 		priv->status = -EINVAL;
+	}
 	hdd_request_complete(hdd_request);
 	hdd_request_put(hdd_request);
 }
@@ -1898,8 +1900,10 @@ static int __wlan_hdd_cfg80211_dcc_update_ndl(struct wiphy *wiphy,
 	}
 
 	/* Parse the netlink message */
-	if (hdd_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX, data,
-			  data_len, qca_wlan_vendor_dcc_update_ndl)) {
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_DCC_UPDATE_NDL_MAX,
+		      data,
+		      data_len,
+		      qca_wlan_vendor_dcc_update_ndl)) {
 		hdd_err("Invalid ATTR");
 		return -EINVAL;
 	}

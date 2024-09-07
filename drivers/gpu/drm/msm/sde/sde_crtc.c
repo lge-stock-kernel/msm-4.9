@@ -51,6 +51,10 @@
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
 
+#ifdef CONFIG_LGE_PM_PRM
+#include "fbcn/lge_intm.h"
+#endif
+
 struct sde_crtc_custom_events {
 	u32 event;
 	int (*func)(struct drm_crtc *crtc, bool en,
@@ -3275,7 +3279,8 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	 * smmu state is attached,
 	 */
 	if ((smmu_state->state != DETACHED) &&
-			(smmu_state->state != DETACH_ALL_REQ))
+			(smmu_state->state != DETACH_ALL_REQ) &&
+				sde_crtc->enabled)
 		sde_cp_crtc_apply_properties(crtc);
 
 	/*
@@ -3877,6 +3882,11 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 	sde_crtc->play_count++;
 
+#ifdef CONFIG_LGE_PM_PRM
+	if (lge_prm_get_info(LGE_PRM_INFO_FBCN_ENABLED))
+		lge_intv_notify(ktime_get());
+#endif
+
 	/*
 	 * For SYNC inline modes, delay the kick off until after the
 	 * wait for frame done in case the wait times out.
@@ -4251,7 +4261,6 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 
 static void sde_crtc_disable(struct drm_crtc *crtc)
 {
-	struct sde_kms *sde_kms;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	struct drm_encoder *encoder;
@@ -4264,12 +4273,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
-		return;
-	}
-
-	sde_kms = _sde_crtc_get_kms(crtc);
-	if (!sde_kms) {
-		SDE_ERROR("invalid kms\n");
 		return;
 	}
 
@@ -4294,7 +4297,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	event.type = DRM_EVENT_CRTC_POWER;
 	event.length = sizeof(u32);
 	sde_cp_crtc_suspend(crtc);
-	sde_cp_update_ad_vsync_count(crtc, 0);
 	power_on = 0;
 	msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
 			(u8 *)&power_on);
@@ -4339,9 +4341,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	}
 	spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
 
-	/* avoid clk/bw downvote if cont-splash is enabled */
-	if (!sde_kms->splash_data.cont_splash_en)
-		sde_core_perf_crtc_update(crtc, 0, true);
+	sde_core_perf_crtc_update(crtc, 0, true);
 
 	drm_for_each_encoder(encoder, crtc->dev) {
 		if (encoder->crtc != crtc)

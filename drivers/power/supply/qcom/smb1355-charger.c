@@ -91,11 +91,16 @@
 #define DIE_TEMP_UB_HOT_BIT			BIT(1)
 #define DIE_TEMP_LB_HOT_BIT			BIT(0)
 
+#define BANDGAP_ENABLE_REG			(MISC_BASE + 0x42)
+#define BANDGAP_ENABLE_CMD_BIT			BIT(0)
 #define MISC_RT_STS_REG				(MISC_BASE + 0x10)
 #define HARD_ILIMIT_RT_STS_BIT			BIT(5)
 
 #define BARK_BITE_WDOG_PET_REG			(MISC_BASE + 0x43)
 #define BARK_BITE_WDOG_PET_BIT			BIT(0)
+
+#define CLOCK_REQUEST_REG			(MISC_BASE + 0x44)
+#define CLOCK_REQUEST_CMD_BIT			BIT(0)
 
 #define WD_CFG_REG				(MISC_BASE + 0x51)
 #define WATCHDOG_TRIGGER_AFP_EN_BIT		BIT(7)
@@ -122,6 +127,7 @@
 #define MISC_CHGR_TRIM_OPTIONS_REG		(MISC_BASE + 0x55)
 #define CMD_RBIAS_EN_BIT			BIT(2)
 
+#define PARALLEL_ENABLE_VOTER			"PARALLEL_ENABLE_VOTER"
 #define MISC_ENG_SDCDC_INPUT_CURRENT_CFG1_REG	(MISC_BASE + 0xC8)
 #define PROLONG_ISENSE_MASK			GENMASK(7, 6)
 #define PROLONG_ISENSEM_SHIFT			6
@@ -224,10 +230,15 @@ struct smb1355 {
 	bool			exit_die_temp;
 	struct delayed_work	die_temp_work;
 	bool			disabled;
+	struct votable	*irq_disable_votable;
 };
 
+static struct smb1355 *the_chip;
 static bool is_secure(struct smb1355 *chip, int addr)
 {
+	if (addr == CLOCK_REQUEST_REG)
+		return true;
+
 	/* assume everything above 0xA0 is secure */
 	return (addr & 0xFF) >= 0xA0;
 }
@@ -241,6 +252,25 @@ static int smb1355_read(struct smb1355 *chip, u16 addr, u8 *val)
 	if (rc >= 0)
 		*val = (u8)temp;
 
+	return rc;
+}
+
+static int smb1355_masked_force_write(struct smb1355 *chip, u16 addr, u8 mask,
+					u8 val)
+{
+	int rc;
+
+	mutex_lock(&chip->write_lock);
+	if (is_secure(chip, addr)) {
+		rc = regmap_write(chip->regmap, (addr & 0xFF00) | 0xD0, 0xA5);
+		if (rc < 0)
+			goto unlock;
+	}
+
+	rc = regmap_write_bits(chip->regmap, addr, mask, val);
+
+unlock:
+	mutex_unlock(&chip->write_lock);
 	return rc;
 }
 
@@ -472,6 +502,7 @@ static enum power_supply_property smb1355_parallel_props[] = {
 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
 	POWER_SUPPLY_PROP_MIN_ICL,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_SET_SHIP_MODE,
 };
 
 static int smb1355_get_prop_batt_charge_type(struct smb1355 *chip,
@@ -610,7 +641,21 @@ static int smb1355_parallel_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_MIN_ICL:
 		val->intval = MIN_PARALLEL_ICL_UA;
 		break;
+	case POWER_SUPPLY_PROP_SET_SHIP_MODE:
+		/* Not in ship mode as long as device is active */
+		val->intval = 0;
+		break;
 	default:
+#ifdef CONFIG_LGE_PM_DEBUG
+	// SMB1355 is not providing POWER_SUPPLY_PROP_ONLINE :
+	// power_supply_changed_work
+	// -> power_supply_update_leds
+	//    -> power_supply_update_gen_leds
+	//       -> power_supply_get_property(POWER_SUPPLY_PROP_ONLINE(4))
+	// So every power_supply_changed() causes
+	// => "SMB1355: smb1355_parallel_get_prop: parallel psy get prop 4 not supported"
+	if (prop != POWER_SUPPLY_PROP_ONLINE)
+#endif
 		pr_err_ratelimited("parallel psy get prop %d not supported\n",
 			prop);
 		return -EINVAL;
@@ -662,6 +707,18 @@ static int smb1355_set_parallel_charging(struct smb1355 *chip, bool disable)
 		schedule_delayed_work(&chip->die_temp_work, 0);
 	}
 
+	if (chip->irq_disable_votable)
+		vote(chip->irq_disable_votable, PARALLEL_ENABLE_VOTER,
+			disable, 0);
+
+	rc = smb1355_masked_write(chip, BANDGAP_ENABLE_REG,
+		BANDGAP_ENABLE_CMD_BIT,
+		disable ? 0 : BANDGAP_ENABLE_CMD_BIT);
+	if (rc < 0) {
+		pr_err("Couldn't configure bandgap enable rc=%d\n", rc);
+		return rc;
+	}
+
 	chip->disabled = disable;
 
 	return 0;
@@ -685,6 +742,20 @@ static int smb1355_set_current_max(struct smb1355 *chip, int curr)
 		rc = smb1355_set_charge_param(chip,
 				&chip->param.usb_icl, curr);
 	}
+
+	return rc;
+}
+
+static int smb1355_clk_request(struct smb1355 *chip, bool enable)
+{
+	int rc;
+
+	rc = smb1355_masked_force_write(chip, CLOCK_REQUEST_REG,
+				CLOCK_REQUEST_CMD_BIT,
+				enable ? CLOCK_REQUEST_CMD_BIT : 0);
+	if (rc < 0)
+		pr_err("Couldn't %s clock rc=%d\n",
+			       enable ? "enable" : "disable", rc);
 
 	return rc;
 }
@@ -714,6 +785,11 @@ static int smb1355_parallel_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONNECTOR_HEALTH:
 		chip->c_health = val->intval;
 		power_supply_changed(chip->parallel_psy);
+		break;
+	case POWER_SUPPLY_PROP_SET_SHIP_MODE:
+		if (!val->intval)
+			break;
+		rc = smb1355_clk_request(chip, false);
 		break;
 	default:
 		pr_debug("parallel power supply set prop %d not supported\n",
@@ -861,6 +937,11 @@ static int smb1355_tskin_sensor_config(struct smb1355 *chip)
 static int smb1355_init_hw(struct smb1355 *chip)
 {
 	int rc;
+
+	/* request clock always on */
+	rc = smb1355_clk_request(chip, true);
+	if (rc < 0)
+		pr_err("Couldn't enable clock rc=%d\n", rc);
 
 	/* enable watchdog bark and bite interrupts, and disable the watchdog */
 	rc = smb1355_masked_write(chip, WD_CFG_REG, WDOG_TIMER_EN_BIT
@@ -1084,6 +1165,7 @@ static int smb1355_request_interrupt(struct smb1355 *chip,
 		return rc;
 	}
 
+	smb1355_irqs[irq_index].irq = irq;
 	if (smb1355_irqs[irq_index].wake)
 		enable_irq_wake(irq);
 
@@ -1113,6 +1195,28 @@ static int smb1355_request_interrupts(struct smb1355 *chip)
 	return rc;
 }
 
+static int smb1355_irq_disable_callback(struct votable *votable, void *data,
+	int disable, const char *client)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(smb1355_irqs); i++) {
+		if (smb1355_irqs[i].irq) {
+			if (disable) {
+				if (smb1355_irqs[i].wake)
+					disable_irq_wake(smb1355_irqs[i].irq);
+				disable_irq(smb1355_irqs[i].irq);
+			} else {
+				enable_irq(smb1355_irqs[i].irq);
+				if (smb1355_irqs[i].wake)
+					enable_irq_wake(smb1355_irqs[i].irq);
+			}
+		}
+	}
+
+	return 0;
+}
+
 /*********
  * PROBE *
  *********/
@@ -1122,6 +1226,24 @@ static const struct of_device_id match_table[] = {
 	},
 	{ },
 };
+
+void smb1355_bandgap_status(void)
+{
+	int rc;
+	u8 val;
+
+	if (the_chip) {
+		rc = smb1355_read(the_chip, BANDGAP_ENABLE_REG, &val);
+		if (rc < 0) {
+			pr_err("Couldn't read bandgap reg rc=%d\n", rc);
+			return;
+		}
+
+		pr_err("SMB1355 BANGGAP ENABLE status = %x\n", val);
+	}
+}
+
+EXPORT_SYMBOL(smb1355_bandgap_status);
 
 static int smb1355_probe(struct platform_device *pdev)
 {
@@ -1187,6 +1309,17 @@ static int smb1355_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 
+	chip->irq_disable_votable = create_votable("SMB1355_IRQ_DISABLE",
+		VOTE_SET_ANY, smb1355_irq_disable_callback, chip);
+	if (IS_ERR(chip->irq_disable_votable)) {
+		rc = PTR_ERR(chip->irq_disable_votable);
+		return rc;
+	}
+
+	/* keep IRQ's disabled until parallel is enabled */
+	vote(chip->irq_disable_votable, PARALLEL_ENABLE_VOTER, true, 0);
+
+	the_chip = chip;
 	pr_info("%s probed successfully pl_mode=%s batfet_mode=%s\n",
 		chip->name,
 		IS_USBIN(chip->dt.pl_mode) ? "USBIN-USBIN" : "USBMID-USBMID",
@@ -1214,6 +1347,10 @@ static void smb1355_shutdown(struct platform_device *pdev)
 	rc = smb1355_set_parallel_charging(chip, true);
 	if (rc < 0)
 		pr_err("Couldn't disable parallel path rc=%d\n", rc);
+
+	rc = smb1355_clk_request(chip, false);
+	if (rc < 0)
+		pr_err("Couldn't disable clock rc=%d\n", rc);
 }
 
 static struct platform_driver smb1355_driver = {

@@ -1258,11 +1258,6 @@ int ipa3_table_dma_cmd(struct ipa_ioc_nat_dma_cmd *dma)
 		goto bail;
 	}
 
-	if (!ipa3_ctx->nat_mem.dev.is_dev_init) {
-		IPAERR_RL("NAT hasn't been initialized\n");
-		return -EPERM;
-	}
-
 	for (cnt = 0; cnt < dma->entries; ++cnt) {
 		result = ipa3_table_validate_table_dma_one(&dma->dma[cnt]);
 		if (result) {
@@ -1522,6 +1517,8 @@ int ipa3_del_nat_table(struct ipa_ioc_nat_ipv6ct_table_del *del)
 			ipa3_ctx->nat_mem.pdn_mem.size,
 			ipa3_ctx->nat_mem.pdn_mem.base,
 			ipa3_ctx->nat_mem.pdn_mem.phys_base);
+			ipa3_ctx->nat_mem.pdn_mem.base = NULL;
+			ipa3_ctx->nat_mem.dev.is_mem_allocated = false;
 	}
 
 	ipa3_nat_ipv6ct_free_mem(&ipa3_ctx->nat_mem.dev);

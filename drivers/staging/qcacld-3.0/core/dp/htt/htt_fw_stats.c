@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -58,13 +58,12 @@ static char *bw_str_arr[] = {"20MHz", "40MHz", "80MHz", "160MHz"};
  * to bypass the strong type-checking of a function seems a simple
  * trick to use to avoid the code duplication.
  */
+//(18.04.05), protocol-wifi, JUDY HOTSPOT KPI: Use qdf_print [START]
 #define tx_rate_stats_print_cmn(_tx_rate_info, _concise) \
 	do {							 \
-		qdf_debug("TX Rate Info:");			 \
-		\
 		/* MCS */					 \
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"MCS counts (0..9)",		 \
+		qdf_print("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
+				"[TX] MCS counts (0..9)",		 \
 				_tx_rate_info->mcs[0],		 \
 				_tx_rate_info->mcs[1],		 \
 				_tx_rate_info->mcs[2],		 \
@@ -76,67 +75,25 @@ static char *bw_str_arr[] = {"20MHz", "40MHz", "80MHz", "160MHz"};
 				_tx_rate_info->mcs[8],		 \
 				_tx_rate_info->mcs[9]);		 \
 		\
-		/* SGI */					 \
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"SGI counts (0..9)",		 \
-				_tx_rate_info->sgi[0],		 \
-				_tx_rate_info->sgi[1],		 \
-				_tx_rate_info->sgi[2],		 \
-				_tx_rate_info->sgi[3],		 \
-				_tx_rate_info->sgi[4],		 \
-				_tx_rate_info->sgi[5],		 \
-				_tx_rate_info->sgi[6],		 \
-				_tx_rate_info->sgi[7],		 \
-				_tx_rate_info->sgi[8],		 \
-				_tx_rate_info->sgi[9]);		 \
-		\
 		/* NSS */					 \
-		qdf_debug("NSS  counts: 1x1 %d, 2x2 %d, 3x3 %d", \
+		qdf_print("[TX] NSS counts: 1x1 %d, 2x2 %d", \
 				_tx_rate_info->nss[0],		 \
-				_tx_rate_info->nss[1], _tx_rate_info->nss[2]);\
+				_tx_rate_info->nss[1]);\
 		\
 		/* BW */					 \
 		if (ARRAY_SIZE(_tx_rate_info->bw) == 3) \
-			qdf_debug("BW counts: %s %d, %s %d, %s %d", \
+			qdf_print("[TX] BW counts: %s %d, %s %d, %s %d", \
 				bw_str_arr[0], _tx_rate_info->bw[0],	 \
 				bw_str_arr[1], _tx_rate_info->bw[1],	 \
 				bw_str_arr[2], _tx_rate_info->bw[2]);	 \
 		else if (ARRAY_SIZE(_tx_rate_info->bw) == 4) \
-			qdf_debug("BW counts: %s %d, %s %d, %s %d, %s %d", \
+			qdf_print("[TX] BW counts: %s %d, %s %d, %s %d, %s %d", \
 				bw_str_arr[0], _tx_rate_info->bw[0],	 \
 				bw_str_arr[1], _tx_rate_info->bw[1],	 \
 				bw_str_arr[2], _tx_rate_info->bw[2],     \
 				bw_str_arr[3], _tx_rate_info->bw[3]);	 \
-		\
-		\
-		/* Preamble */					 \
-		qdf_debug("Preamble (O C H V) counts: %d, %d, %d, %d",\
-				_tx_rate_info->pream[0],		 \
-				_tx_rate_info->pream[1],		 \
-				_tx_rate_info->pream[2],		 \
-				_tx_rate_info->pream[3]);		 \
-		\
-		/* STBC rate counts */				 \
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"STBC rate counts (0..9)",	 \
-				_tx_rate_info->stbc[0],		 \
-				_tx_rate_info->stbc[1],		 \
-				_tx_rate_info->stbc[2],		 \
-				_tx_rate_info->stbc[3],		 \
-				_tx_rate_info->stbc[4],		 \
-				_tx_rate_info->stbc[5],		 \
-				_tx_rate_info->stbc[6],		 \
-				_tx_rate_info->stbc[7],		 \
-				_tx_rate_info->stbc[8],		 \
-				_tx_rate_info->stbc[9]);	 \
-			\
-		/* LDPC and TxBF counts */			 \
-		qdf_debug("LDPC Counts: %d", _tx_rate_info->ldpc);\
-		qdf_debug("RTS Counts: %d", _tx_rate_info->rts_cnt);\
-		/* RSSI Values for last ack frames */		\
-		qdf_debug("Ack RSSI: %d", _tx_rate_info->ack_rssi);\
 	} while (0)
-
+//(18.04.05), protocol-wifi, JUDY HOTSPOT KPI: Use qdf_print [END]
 static void htt_t2h_stats_tx_rate_stats_print(wlan_dbg_tx_rate_info_t *
 					      tx_rate_info, int concise)
 {
@@ -159,13 +116,12 @@ static void htt_t2h_stats_tx_rate_stats_print_v2(wlan_dbg_tx_rate_info_v2_t *
  * to bypass the strong type-checking of a function seems a simple
  * trick to use to avoid the code duplication.
  */
+//(18.04.05), protocol-wifi, JUDY HOTSPOT KPI: Use qdf_print [START]
 #define rx_rate_stats_print_cmn(_rx_phy_info, _concise) \
 	do {							\
-		qdf_debug("RX Rate Info:");			\
-		\
 		/* MCS */					\
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"MCS counts (0..9)",		 \
+		qdf_print("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
+				"[RX] MCS counts (0..9)",		 \
 				_rx_phy_info->mcs[0],			\
 				_rx_phy_info->mcs[1],			\
 				_rx_phy_info->mcs[2],			\
@@ -176,20 +132,6 @@ static void htt_t2h_stats_tx_rate_stats_print_v2(wlan_dbg_tx_rate_info_v2_t *
 				_rx_phy_info->mcs[7],			\
 				_rx_phy_info->mcs[8],			\
 				_rx_phy_info->mcs[9]);			\
-		\
-		/* SGI */						\
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"SGI counts (0..9)",		 \
-				_rx_phy_info->sgi[0],			\
-				_rx_phy_info->sgi[1],			\
-				_rx_phy_info->sgi[2],			\
-				_rx_phy_info->sgi[3],			\
-				_rx_phy_info->sgi[4],			\
-				_rx_phy_info->sgi[5],			\
-				_rx_phy_info->sgi[6],			\
-				_rx_phy_info->sgi[7],			\
-				_rx_phy_info->sgi[8],			\
-				_rx_phy_info->sgi[9]);			\
 		\
 		/*
 		 * NSS							       \
@@ -202,77 +144,26 @@ static void htt_t2h_stats_tx_rate_stats_print_v2(wlan_dbg_tx_rate_info_v2_t *
 		 * if needed in the future. Hence the addition in the host code\
 		 * at this line.
 		 */							       \
-		qdf_debug("NSS  counts: 1x1 %d, 2x2 %d, 3x3 %d, 4x4 %d",\
+		qdf_print("[RX] NSS counts: 1x1 %d, 2x2 %d, 3x3 %d, 4x4 %d",\
 				_rx_phy_info->nss[0] + _rx_phy_info->nsts,\
 				_rx_phy_info->nss[1],			\
 				_rx_phy_info->nss[2],			\
 				_rx_phy_info->nss[3]);		\
 		\
-		/* NSTS */					\
-		qdf_debug("NSTS count: %d", _rx_phy_info->nsts);	\
-		\
 		/* BW */					\
 		if (ARRAY_SIZE(_rx_phy_info->bw) == 3) \
-			qdf_debug("BW counts: %s %d, %s %d, %s %d",	\
+			qdf_print("[RX] BW counts: %s %d, %s %d, %s %d",	\
 				bw_str_arr[0], _rx_phy_info->bw[0],	\
 				bw_str_arr[1], _rx_phy_info->bw[1],	\
 				bw_str_arr[2], _rx_phy_info->bw[2]);	\
 		else if (ARRAY_SIZE(_rx_phy_info->bw) == 4) \
-			qdf_debug("BW counts: %s %d, %s %d, %s %d, %s %d", \
+			qdf_print("[RX] BW counts: %s %d, %s %d, %s %d, %s %d", \
 				bw_str_arr[0], _rx_phy_info->bw[0],	\
 				bw_str_arr[1], _rx_phy_info->bw[1],	\
 				bw_str_arr[2], _rx_phy_info->bw[2],    \
 				bw_str_arr[3], _rx_phy_info->bw[3]);	\
-		\
-		/* Preamble */					\
-		qdf_debug("Preamble counts: %d, %d, %d, %d, %d, %d",\
-				_rx_phy_info->pream[0],		\
-				_rx_phy_info->pream[1],		\
-				_rx_phy_info->pream[2],		\
-				_rx_phy_info->pream[3],		\
-				_rx_phy_info->pream[4],		\
-				_rx_phy_info->pream[5]);		\
-		\
-		/* STBC rate counts */				\
-		qdf_debug("%s: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",\
-				"STBC rate counts (0..9)",	\
-				_rx_phy_info->stbc[0],		\
-				_rx_phy_info->stbc[1],		\
-				_rx_phy_info->stbc[2],		\
-				_rx_phy_info->stbc[3],		\
-				_rx_phy_info->stbc[4],		\
-				_rx_phy_info->stbc[5],		\
-				_rx_phy_info->stbc[6],		\
-				_rx_phy_info->stbc[7],		\
-				_rx_phy_info->stbc[8],		\
-				_rx_phy_info->stbc[9]);		\
-		\
-		/* LDPC and TxBF counts */			\
-		qdf_debug("LDPC TXBF Counts: %d, %d",		\
-				_rx_phy_info->ldpc, _rx_phy_info->txbf);\
-		/* RSSI Values for last received frames */	\
-		qdf_debug("RSSI (data, mgmt): %d, %d", _rx_phy_info->data_rssi,\
-				_rx_phy_info->mgmt_rssi);		\
-		\
-		qdf_debug("RSSI Chain 0 (0x%02x 0x%02x 0x%02x 0x%02x)",\
-				((_rx_phy_info->rssi_chain0 >> 24) & 0xff),\
-				((_rx_phy_info->rssi_chain0 >> 16) & 0xff),\
-				((_rx_phy_info->rssi_chain0 >> 8) & 0xff),\
-				((_rx_phy_info->rssi_chain0 >> 0) & 0xff));\
-		\
-		qdf_debug("RSSI Chain 1 (0x%02x 0x%02x 0x%02x 0x%02x)",\
-				((_rx_phy_info->rssi_chain1 >> 24) & 0xff),\
-				((_rx_phy_info->rssi_chain1 >> 16) & 0xff),\
-				((_rx_phy_info->rssi_chain1 >> 8) & 0xff),\
-				((_rx_phy_info->rssi_chain1 >> 0) & 0xff));\
-		\
-		qdf_debug("RSSI Chain 2 (0x%02x 0x%02x 0x%02x 0x%02x)",\
-				((_rx_phy_info->rssi_chain2 >> 24) & 0xff),\
-				((_rx_phy_info->rssi_chain2 >> 16) & 0xff),\
-				((_rx_phy_info->rssi_chain2 >> 8) & 0xff),\
-				((_rx_phy_info->rssi_chain2 >> 0) & 0xff));\
 	} while (0)
-
+//(18.04.05), protocol-wifi, JUDY HOTSPOT KPI: Use qdf_print [END]
 static void htt_t2h_stats_rx_rate_stats_print(wlan_dbg_rx_rate_info_t *
 					      rx_phy_info, int concise)
 {
@@ -841,37 +732,14 @@ htt_t2h_tx_ppdu_log_print(struct ol_fw_tx_dbg_ppdu_msg_hdr *hdr,
 {
 	int i;
 	int record_size;
-	int calculated_record_size;
 	int num_records;
 
-	record_size = sizeof(*record);
-	calculated_record_size = record_size +
-				hdr->mpdu_bytes_array_len * sizeof(uint16_t);
-	if (calculated_record_size < record_size) {
-		qdf_err("Overflow due to record and hdr->mpdu_bytes_array_len %u",
-			hdr->mpdu_bytes_array_len);
-		return;
-	}
-	record_size = calculated_record_size;
-	calculated_record_size += hdr->mpdu_msdus_array_len * sizeof(uint8_t);
-	if (calculated_record_size < record_size) {
-		qdf_err("Overflow due to hdr->mpdu_msdus_array_len %u",
-			hdr->mpdu_msdus_array_len);
-		return;
-	}
-	record_size = calculated_record_size;
-	calculated_record_size += hdr->msdu_bytes_array_len * sizeof(uint16_t);
-	if (calculated_record_size < record_size) {
-		qdf_err("Overflow due to hdr->msdu_bytes_array_len %u",
-			hdr->msdu_bytes_array_len);
-		return;
-	}
-	record_size = calculated_record_size;
+	record_size =
+		sizeof(*record) +
+		hdr->mpdu_bytes_array_len * sizeof(uint16_t) +
+		hdr->mpdu_msdus_array_len * sizeof(uint8_t) +
+		hdr->msdu_bytes_array_len * sizeof(uint16_t);
 	num_records = (length - sizeof(*hdr)) / record_size;
-	if (num_records < 0) {
-		qdf_err("Underflow due to length %d", length);
-		return;
-	}
 	qdf_debug("Tx PPDU log elements: num_records %d", num_records);
 
 	for (i = 0; i < num_records; i++) {
@@ -903,7 +771,6 @@ htt_t2h_tx_ppdu_log_print(struct ol_fw_tx_dbg_ppdu_msg_hdr *hdr,
 #define BUF_SIZE 80
 			char buf[BUF_SIZE];
 			uint8_t *p8;
-			uint8_t *calculated_p8;
 
 			time_enqueue_us =
 				HTT_TICK_TO_USEC(record->timestamp_enqueue,
@@ -975,12 +842,7 @@ htt_t2h_tx_ppdu_log_print(struct ol_fw_tx_dbg_ppdu_msg_hdr *hdr,
 			}
 			/* skip the regular msg fields to reach the tail area */
 			p8 = (uint8_t *) record;
-			calculated_p8 = p8 + sizeof(struct ol_fw_tx_dbg_ppdu_base);
-			if (calculated_p8 < p8) {
-				qdf_err("Overflow due to record %pK", p8);
-				continue;
-			}
-			p8 = calculated_p8;
+			p8 += sizeof(struct ol_fw_tx_dbg_ppdu_base);
 			if (hdr->mpdu_bytes_array_len) {
 				htt_make_u16_list_str((uint32_t *) p8, buf,
 						      BUF_SIZE,
@@ -988,26 +850,14 @@ htt_t2h_tx_ppdu_log_print(struct ol_fw_tx_dbg_ppdu_msg_hdr *hdr,
 						      mpdu_bytes_array_len);
 				qdf_debug("   MPDU bytes: %s", buf);
 			}
-			calculated_p8 += hdr->mpdu_bytes_array_len * sizeof(uint16_t);
-			if (calculated_p8 < p8) {
-				qdf_err("Overflow due to hdr->mpdu_bytes_array_len %u",
-					hdr->mpdu_bytes_array_len);
-				continue;
-			}
-			p8 = calculated_p8;
+			p8 += hdr->mpdu_bytes_array_len * sizeof(uint16_t);
 			if (hdr->mpdu_msdus_array_len) {
 				htt_make_u8_list_str((uint32_t *) p8, buf,
 						     BUF_SIZE,
 						     hdr->mpdu_msdus_array_len);
 				qdf_debug("   MPDU MSDUs: %s", buf);
 			}
-			calculated_p8 += hdr->mpdu_msdus_array_len * sizeof(uint8_t);
-			if (calculated_p8 < p8) {
-				qdf_err("Overflow due to hdr->mpdu_msdus_array_len %u",
-					hdr->mpdu_msdus_array_len);
-				continue;
-			}
-			p8 = calculated_p8;
+			p8 += hdr->mpdu_msdus_array_len * sizeof(uint8_t);
 			if (hdr->msdu_bytes_array_len) {
 				htt_make_u16_list_str((uint32_t *) p8, buf,
 						      BUF_SIZE,

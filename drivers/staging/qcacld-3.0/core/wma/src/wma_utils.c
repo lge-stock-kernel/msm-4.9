@@ -1280,7 +1280,7 @@ static int wma_unified_link_peer_stats_event_handler(void *handle,
 	size_t peer_info_size, peer_stats_size, rate_stats_size;
 	size_t link_stats_results_size;
 	bool excess_data = false;
-	uint32_t buf_len;
+	uint32_t buf_len = 0;
 
 	tpAniSirGlobal pMac = cds_get_context(QDF_MODULE_ID_PE);
 
@@ -1352,6 +1352,7 @@ static int wma_unified_link_peer_stats_event_handler(void *handle,
 	    (buf_len > WMI_SVC_MSG_MAX_SIZE - sizeof(*fixed_param))) {
 		WMA_LOGE("excess wmi buffer: rates:%d, peers:%d",
 			peer_stats->num_rates, fixed_param->num_peers);
+		QDF_ASSERT(0);
 		return -EINVAL;
 	}
 
@@ -1437,7 +1438,6 @@ int wma_unified_radio_tx_mem_free(void *handle)
 	rs_results = (tSirWifiRadioStat *)
 				&wma_handle->link_stats_results->results[0];
 	for (i = 0; i < wma_handle->link_stats_results->num_radio; i++) {
-		rs_results += i;
 		if (rs_results->tx_time_per_power_level) {
 			qdf_mem_free(rs_results->tx_time_per_power_level);
 			rs_results->tx_time_per_power_level = NULL;
@@ -1447,6 +1447,7 @@ int wma_unified_radio_tx_mem_free(void *handle)
 			qdf_mem_free(rs_results->channels);
 			rs_results->channels = NULL;
 		}
+		rs_results++;
 	}
 
 	qdf_mem_free(wma_handle->link_stats_results);
@@ -1526,8 +1527,8 @@ static int wma_unified_radio_tx_power_level_stats_event_handler(void *handle,
 		return -EINVAL;
 	}
 
-	if (fixed_param->radio_id >= link_stats_results->num_radio) {
-		WMA_LOGE("%s: Invalid radio_id %d num_radio %d",
+	if (fixed_param->radio_id > link_stats_results->num_radio) {
+		WMA_LOGD("%s: Invalid radio_id %d num_radio %d",
 			 __func__, fixed_param->radio_id,
 			 link_stats_results->num_radio);
 		return -EINVAL;
@@ -1543,6 +1544,15 @@ static int wma_unified_radio_tx_power_level_stats_event_handler(void *handle,
 	rs_results = (tSirWifiRadioStat *) &link_stats_results->results[0] +
 							 fixed_param->radio_id;
 	tx_power_level_values = (uint8_t *) param_tlvs->tx_time_per_power_level;
+
+	if (rs_results->total_num_tx_power_levels &&
+	    fixed_param->total_num_tx_power_levels >
+		rs_results->total_num_tx_power_levels) {
+		WMA_LOGE("%s: excess tx_power buffers:%d, total_num_tx_power_levels:%d",
+			 __func__, fixed_param->total_num_tx_power_levels,
+			 rs_results->total_num_tx_power_levels);
+		return -EINVAL;
+	}
 
 	rs_results->total_num_tx_power_levels =
 				fixed_param->total_num_tx_power_levels;
@@ -1691,13 +1701,6 @@ static int wma_unified_link_radio_stats_event_handler(void *handle,
 	}
 	link_stats_results_size = sizeof(*link_stats_results) +
 				  fixed_param->num_radio * radio_stats_size;
-
-	if (radio_stats->radio_id >= fixed_param->num_radio) {
-		WMA_LOGE("%s: Invalid radio_id %d num_radio %d",
-			 __func__, radio_stats->radio_id,
-			 fixed_param->num_radio);
-		return -EINVAL;
-	}
 
 	if (!wma_handle->link_stats_results) {
 		wma_handle->link_stats_results = qdf_mem_malloc(
@@ -3605,25 +3608,19 @@ int wma_unified_debug_print_event_handler(void *handle, uint8_t *datap,
 	uint32_t datalen;
 
 	param_buf = (WMI_DEBUG_PRINT_EVENTID_param_tlvs *) datap;
-	if (!param_buf || !param_buf->data) {
+	if (!param_buf) {
 		WMA_LOGE("Get NULL point message from FW");
 		return -ENOMEM;
 	}
 	data = param_buf->data;
 	datalen = param_buf->num_data;
-	if (datalen > WMI_SVC_MSG_MAX_SIZE) {
-		WMA_LOGE("Received data len %d exceeds max value %d",
-				datalen, WMI_SVC_MSG_MAX_SIZE);
-		return QDF_STATUS_E_FAILURE;
-	}
-	data[datalen - 1] = '\0';
 
 #ifdef BIG_ENDIAN_HOST
 	{
-		if (datalen >= BIG_ENDIAN_MAX_DEBUG_BUF) {
+		if (datalen > BIG_ENDIAN_MAX_DEBUG_BUF) {
 			WMA_LOGE("%s Invalid data len %d, limiting to max",
 				 __func__, datalen);
-			datalen = BIG_ENDIAN_MAX_DEBUG_BUF - 1;
+			datalen = BIG_ENDIAN_MAX_DEBUG_BUF;
 		}
 		char dbgbuf[BIG_ENDIAN_MAX_DEBUG_BUF] = { 0 };
 
@@ -5148,11 +5145,6 @@ QDF_STATUS wma_get_updated_scan_and_fw_mode_config(uint32_t *scan_config,
 			dual_mac_disable_ini);
 		WMI_DBS_CONC_SCAN_CFG_ASYNC_DBS_SCAN_SET(*scan_config, 0);
 		break;
-	case ENABLE_DBS_CXN_AND_DISABLE_DBS_SCAN:
-		WMA_LOGD("%s: dual_mac_disable_ini:%d ", __func__,
-			dual_mac_disable_ini);
-		WMI_DBS_CONC_SCAN_CFG_DBS_SCAN_SET(*scan_config, 0);
-		break;
 	default:
 		break;
 	}
@@ -5506,12 +5498,10 @@ bool wma_is_scan_simultaneous_capable(void)
 		return true;
 	}
 
-	if ((mac->dual_mac_feature_disable == DISABLE_DBS_CXN_AND_SCAN) ||
-	    (mac->dual_mac_feature_disable ==
-	     ENABLE_DBS_CXN_AND_DISABLE_DBS_SCAN))
-		return false;
+	if (mac->dual_mac_feature_disable != DISABLE_DBS_CXN_AND_SCAN)
+		return true;
 
-	return true;
+	return false;
 }
 
 /**

@@ -343,8 +343,22 @@ static void __save_error_info(struct super_block *sb, const char *func,
 static void save_error_info(struct super_block *sb, const char *func,
 			    unsigned int line)
 {
+#ifdef CONFIG_MACH_LGE
+	struct ext4_super_block *es = EXT4_SB(sb)->s_es;
+#endif
+
 	__save_error_info(sb, func, line);
+
+#ifdef CONFIG_MACH_LGE
+	if (!strncmp(es->s_volume_name, "system", 6) &&
+			sb->s_flags & MS_RDONLY) {
+		printk("EXT4-fs error from Read only system partiton, so skip ext4_commit_super\n");
+	} else {
+		ext4_commit_super(sb, 1);
+	}
+#else
 	ext4_commit_super(sb, 1);
+#endif
 }
 
 /*
@@ -418,6 +432,15 @@ static void ext4_handle_error(struct super_block *sb)
 		 */
 		smp_wmb();
 		sb->s_flags |= MS_RDONLY;
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE, 2016-11-24, DIVAP-BSP-FS@lge.com
+		 * put panic when ext4 partition(data partition) is remounted as Read Only
+		 */
+		if(!strcmp(EXT4_SB(sb)->s_es->s_volume_name,"data") &&
+				system_state != SYSTEM_RESTART &&
+				system_state != SYSTEM_POWER_OFF)
+				panic("EXT4-fs panic from previous error. remounted as RO \n");
+#endif
 	}
 	if (test_opt(sb, ERRORS_PANIC)) {
 		if (EXT4_SB(sb)->s_journal &&
@@ -620,6 +643,15 @@ void __ext4_abort(struct super_block *sb, const char *function,
 		if (EXT4_SB(sb)->s_journal)
 			jbd2_journal_abort(EXT4_SB(sb)->s_journal, -EIO);
 		save_error_info(sb, function, line);
+#ifdef CONFIG_MACH_LGE
+		/* LGE_CHANGE, 2016-11-24, DIVAP-BSP-FS@lge.com
+		 * put panic when ext4 partition(data partition) is remounted as Read Only
+		 */
+		if(!strcmp(EXT4_SB(sb)->s_es->s_volume_name,"data") &&
+				system_state != SYSTEM_RESTART &&
+				system_state != SYSTEM_POWER_OFF)
+				panic("EXT4-fs panic from previous error. remounted as RO \n");
+#endif
 	}
 	if (test_opt(sb, ERRORS_PANIC)) {
 		if (EXT4_SB(sb)->s_journal &&
@@ -2991,6 +3023,9 @@ static ext4_group_t ext4_has_uninit_itable(struct super_block *sb)
 	ext4_group_t group, ngroups = EXT4_SB(sb)->s_groups_count;
 	struct ext4_group_desc *gdp = NULL;
 
+	if (!ext4_has_group_desc_csum(sb))
+		return ngroups;
+
 	for (group = 0; group < ngroups; group++) {
 		gdp = ext4_get_group_desc(sb, group, NULL);
 		if (!gdp)
@@ -3672,6 +3707,11 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	} else {
 		sbi->s_inode_size = le16_to_cpu(es->s_inode_size);
 		sbi->s_first_ino = le32_to_cpu(es->s_first_ino);
+		if (sbi->s_first_ino < EXT4_GOOD_OLD_FIRST_INO) {
+			ext4_msg(sb, KERN_ERR, "invalid first ino: %u",
+				 sbi->s_first_ino);
+			goto failed_mount;
+		}
 		if ((sbi->s_inode_size < EXT4_GOOD_OLD_INODE_SIZE) ||
 		    (!is_power_of_2(sbi->s_inode_size)) ||
 		    (sbi->s_inode_size > blocksize)) {
@@ -4230,6 +4270,12 @@ no_journal:
 cantfind_ext4:
 	if (!silent)
 		ext4_msg(sb, KERN_ERR, "VFS: Can't find ext4 filesystem");
+#ifdef CONFIG_MACH_LGE
+	/* LGE_CHANGE, BSP-FS@lge.com
+	   add return code if ext4 superblock is damaged
+	*/
+	ret=-ESUPER;
+#endif
 	goto failed_mount;
 
 #ifdef CONFIG_QUOTA
@@ -5141,6 +5187,12 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 	buf->f_bfree = EXT4_C2B(sbi, max_t(s64, bfree, 0));
 	buf->f_bavail = buf->f_bfree -
 			(ext4_r_blocks_count(es) + resv_blocks);
+#ifdef CONFIG_MACH_SDM845_JUDYLN_LAO_LDU
+	if(!strcmp(es->s_last_mounted,"/data"))
+	{
+		buf->f_blocks = 10927276;
+	}
+#endif
 	if (buf->f_bfree < (ext4_r_blocks_count(es) + resv_blocks))
 		buf->f_bavail = 0;
 	buf->f_files = le32_to_cpu(es->s_inodes_count);

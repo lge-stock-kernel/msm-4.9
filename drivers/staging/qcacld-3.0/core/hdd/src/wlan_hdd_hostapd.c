@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -404,10 +404,6 @@ static int __hdd_hostapd_stop(struct net_device *dev)
 	hdd_stop_adapter(hdd_ctx, adapter, true);
 
 	clear_bit(DEVICE_IFACE_OPENED, &adapter->event_flags);
-
-	if (!hdd_is_cli_iface_up(hdd_ctx))
-		sme_scan_flush_result(hdd_ctx->hHal);
-
 	/* Stop all tx queues */
 	hdd_info("Disabling queues");
 	wlan_hdd_netif_queue_control(adapter,
@@ -1675,8 +1671,16 @@ QDF_STATUS hdd_hostapd_sap_event_cb(tpSap_Event pSapEvent,
 					pHddApCtx->uBCStaId,
 					HDD_IPA_AP_CONNECT,
 					pHostapdAdapter->dev->dev_addr);
-			if (status)
+			if (status) {
 				hdd_err("WLAN_AP_CONNECT event failed");
+				/*
+				 * Make sure to set the event before proceeding
+				 * for error handling otherwise caller thread
+				 * will wait till 10 secs and no other
+				 * connection will go through before that.
+				 */
+				qdf_event_set(&pHostapdState->qdf_event);
+			}
 		}
 
 		if (0 !=
@@ -2624,11 +2628,11 @@ int hdd_softap_unpack_ie(tHalHandle halHandle,
 			 bool *pMFPRequired,
 			 uint16_t gen_ie_len, uint8_t *gen_ie)
 {
-	uint32_t ret;
-	uint8_t *pRsnIe;
-	uint16_t RSNIeLen;
 	tDot11fIERSN dot11RSNIE;
 	tDot11fIEWPA dot11WPAIE;
+
+	uint8_t *pRsnIe;
+	uint16_t RSNIeLen;
 
 	if (NULL == halHandle) {
 		hdd_err("Error haHandle returned NULL");
@@ -2651,13 +2655,8 @@ int hdd_softap_unpack_ie(tHalHandle halHandle,
 		RSNIeLen = gen_ie_len - 2;
 		/* Unpack the RSN IE */
 		memset(&dot11RSNIE, 0, sizeof(tDot11fIERSN));
-		ret = dot11f_unpack_ie_rsn((tpAniSirGlobal) halHandle,
-					   pRsnIe, RSNIeLen, &dot11RSNIE,
-					   false);
-		if (DOT11F_FAILED(ret)) {
-			hdd_err("unpack failed, ret: 0x%x", ret);
-			return -EINVAL;
-		}
+		dot11f_unpack_ie_rsn((tpAniSirGlobal) halHandle,
+				     pRsnIe, RSNIeLen, &dot11RSNIE, false);
 		/* Copy out the encryption and authentication types */
 		hdd_debug("pairwise cipher suite count: %d",
 		       dot11RSNIE.pwise_cipher_suite_count);
@@ -2692,12 +2691,8 @@ int hdd_softap_unpack_ie(tHalHandle halHandle,
 		RSNIeLen = gen_ie_len - (2 + 4);
 		/* Unpack the WPA IE */
 		memset(&dot11WPAIE, 0, sizeof(tDot11fIEWPA));
-		ret = dot11f_unpack_ie_wpa((tpAniSirGlobal) halHandle,
+		dot11f_unpack_ie_wpa((tpAniSirGlobal) halHandle,
 				     pRsnIe, RSNIeLen, &dot11WPAIE, false);
-		if (DOT11F_FAILED(ret)) {
-			hdd_err("unpack failed, ret: 0x%x", ret);
-			return -EINVAL;
-		}
 		/* Copy out the encryption and authentication types */
 		hdd_debug("WPA unicast cipher suite count: %d",
 		       dot11WPAIE.unicast_cipher_count);
@@ -3126,6 +3121,10 @@ static __iw_softap_setparam(struct net_device *dev,
 
 	ENTER_DEV(dev);
 
+// [LGE_CHANGE_S] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+	hdd_err("__iw_softap_setparam() : Cmd : %d", sub_cmd);
+// [LGE_CHANGE_E] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+
 	hdd_ctx = WLAN_HDD_GET_CTX(pHostapdAdapter);
 	ret = wlan_hdd_validate_context(hdd_ctx);
 	if (0 != ret)
@@ -3256,6 +3255,23 @@ static __iw_softap_setparam(struct net_device *dev,
 		ret = wma_cli_set_command(pHostapdAdapter->sessionId,
 					  WMA_VDEV_TXRX_FWSTATS_ENABLE_CMDID,
 					  set_value, VDEV_CMD);
+// [LGE_CHANGE_S] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
+#ifdef FEATURE_SUPPORT_LGE
+        ret = wma_cli_set_command(pHostapdAdapter->sessionId,
+                      WMA_VDEV_TXRX_FWSTATS_RESET_CMDID,
+                      set_value, VDEV_CMD);
+        {
+extern int wlan_hdd_get_sap_stats(hdd_adapter_t *adapter, struct station_info *info);
+
+            hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
+            struct station_info info;
+
+            if (pAdapter->device_mode == QDF_SAP_MODE) {
+                wlan_hdd_get_sap_stats(pAdapter, &info);
+            }
+        }
+#endif
+// [LGE_CHANGE_E] 2017.04.26, neo-wifi@lge.com, Add Reset Command for KPI log
 		break;
 	}
 	/* Firmware debug log */
@@ -5260,6 +5276,58 @@ static int iw_get_ap_freq(struct net_device *dev,
 	return ret;
 }
 
+/**
+ * __iw_get_mode() - get mode
+ * @dev - Pointer to the net device.
+ * @info - Pointer to the iw_request_info.
+ * @wrqu - Pointer to the iwreq_data.
+ * @extra - Pointer to the data.
+ *
+ * Return: 0 for success, non zero for failure.
+ */
+static int __iw_get_mode(struct net_device *dev,
+		       struct iw_request_info *info,
+		       union iwreq_data *wrqu, char *extra) {
+
+	hdd_adapter_t *adapter;
+	hdd_context_t *hdd_ctx;
+	int ret;
+
+	ENTER_DEV(dev);
+
+	adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (0 != ret)
+		return ret;
+
+	wrqu->mode = IW_MODE_MASTER;
+
+	return ret;
+}
+
+/**
+ * iw_get_mode() - Wrapper function to protect __iw_get_mode from the SSR.
+ * @dev - Pointer to the net device.
+ * @info - Pointer to the iw_request_info.
+ * @wrqu - Pointer to the iwreq_data.
+ * @extra - Pointer to the data.
+ *
+ * Return: 0 for success, non zero for failure.
+ */
+static int iw_get_mode(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra)
+{
+	int ret;
+
+	cds_ssr_protect(__func__);
+	ret = __iw_get_mode(dev, info, wrqu, extra);
+	cds_ssr_unprotect(__func__);
+
+	return ret;
+}
+
 static int
 __iw_softap_stopbss(struct net_device *dev,
 		    struct iw_request_info *info,
@@ -5749,7 +5817,7 @@ static const iw_handler hostapd_handler[] = {
 	(iw_handler) NULL,      /* SIOCSIWFREQ */
 	(iw_handler) iw_get_ap_freq,            /* SIOCGIWFREQ */
 	(iw_handler) NULL,      /* SIOCSIWMODE */
-	(iw_handler) NULL,       /* SIOCGIWMODE */
+	(iw_handler) iw_get_mode,       /* SIOCGIWMODE */
 	(iw_handler) NULL,      /* SIOCSIWSENS */
 	(iw_handler) NULL,      /* SIOCGIWSENS */
 	(iw_handler) NULL,      /* SIOCSIWRANGE */
@@ -6687,24 +6755,19 @@ static bool wlan_hdd_rate_is_11g(u8 rate)
  */
 static bool wlan_hdd_get_sap_obss(hdd_adapter_t *pHostapdAdapter)
 {
-	uint32_t ret;
-	uint8_t *ie = NULL;
-	tDot11fIEHTCaps dot11_ht_cap_ie = {0};
 	uint8_t ht_cap_ie[DOT11F_IE_HTCAPS_MAX_LEN];
+	tDot11fIEHTCaps dot11_ht_cap_ie = {0};
 	hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(pHostapdAdapter);
 	beacon_data_t *beacon = pHostapdAdapter->sessionCtx.ap.beacon;
+	uint8_t *ie = NULL;
 
 	ie = wlan_hdd_cfg80211_get_ie_ptr(beacon->tail, beacon->tail_len,
 						WLAN_EID_HT_CAPABILITY);
 	if (ie && ie[1]) {
 		qdf_mem_copy(ht_cap_ie, &ie[2], DOT11F_IE_HTCAPS_MAX_LEN);
-		ret = dot11f_unpack_ie_ht_caps((tpAniSirGlobal)hdd_ctx->hHal,
-					       ht_cap_ie, ie[1],
-					       &dot11_ht_cap_ie, false);
-		if (DOT11F_FAILED(ret)) {
-			hdd_err("unpack failed, ret: 0x%x", ret);
-			return false;
-		}
+		dot11f_unpack_ie_ht_caps((tpAniSirGlobal)hdd_ctx->hHal,
+					ht_cap_ie, ie[1], &dot11_ht_cap_ie,
+					false);
 		return dot11_ht_cap_ie.supportedChannelWidthSet;
 	}
 
@@ -7771,7 +7834,6 @@ int wlan_hdd_cfg80211_start_bss(hdd_adapter_t *pHostapdAdapter,
 	enum dfs_mode mode;
 	bool disable_fw_tdls_state = false;
 	uint8_t ignore_cac = 0;
-	hdd_adapter_t *sta_adapter;
 
 	ENTER();
 
@@ -7786,30 +7848,6 @@ int wlan_hdd_cfg80211_start_bss(hdd_adapter_t *pHostapdAdapter,
 			ret = -EINVAL;
 			goto ret_status;
 		}
-	}
-
-	/*
-	 * For STA+SAP concurrency support from GUI, first STA connection gets
-	 * triggered and while it is in progress, SAP start also comes up.
-	 * Once STA association is successful, STA connect event is sent to
-	 * kernel which gets queued in kernel workqueue and supplicant won't
-	 * process M1 received from AP and send M2 until this NL80211_CONNECT
-	 * event is received. Workqueue is not scheduled as RTNL lock is already
-	 * taken by hostapd thread which has issued start_bss command to driver.
-	 * Driver cannot complete start_bss as the pending command at the head
-	 * of the SME command pending list is hw_mode_update for STA session
-	 * which cannot be processed as SME is in WAITforKey state for STA
-	 * interface. The start_bss command for SAP interface is queued behind
-	 * the hw_mode_update command and so it cannot be processed until
-	 * hw_mode_update command is processed. This is causing a deadlock so
-	 * disconnect the STA interface first if connection or key exchange is
-	 * in progress and then start SAP interface.
-	 */
-	sta_adapter = hdd_get_sta_connection_in_progress(pHddCtx);
-	if (sta_adapter) {
-		hdd_debug("Disconnecting STA with session id: %d",
-			  sta_adapter->sessionId);
-		wlan_hdd_disconnect(sta_adapter, eCSR_DISCONNECT_REASON_DEAUTH);
 	}
 
 	sme_config = qdf_mem_malloc(sizeof(tSmeConfigParams));
@@ -8510,18 +8548,6 @@ static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 	if (0 != ret)
 		return ret;
 
-	/*
-	 * If a STA connection is in progress in another adapter, disconnect
-	 * the STA and complete the SAP operation. STA will reconnect
-	 * after SAP stop is done.
-	 */
-	staAdapter = hdd_get_sta_connection_in_progress(pHddCtx);
-	if (staAdapter) {
-		hdd_debug("Disconnecting STA with session id: %d",
-			  staAdapter->sessionId);
-		wlan_hdd_disconnect(staAdapter, eCSR_DISCONNECT_REASON_DEAUTH);
-	}
-
 	if (pAdapter->device_mode == QDF_SAP_MODE) {
 		wlan_hdd_del_station(pAdapter);
 		hdd_green_ap_stop_bss(pHddCtx);
@@ -8601,10 +8627,6 @@ static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 		hdd_hostapd_state_t *pHostapdState =
 			WLAN_HDD_GET_HOSTAP_STATE_PTR(pAdapter);
 
-		/* Set the stop_bss_in_progress flag */
-		wlansap_set_stop_bss_inprogress(
-			WLAN_HDD_GET_SAP_CTX_PTR(pAdapter), true);
-
 		qdf_event_reset(&pHostapdState->qdf_stop_bss_event);
 		status = wlansap_stop_bss(WLAN_HDD_GET_SAP_CTX_PTR(pAdapter));
 		if (QDF_IS_STATUS_SUCCESS(status)) {
@@ -8623,11 +8645,6 @@ static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 			}
 		}
 		clear_bit(SOFTAP_BSS_STARTED, &pAdapter->event_flags);
-
-		/* Clear the stop_bss_in_progress flag */
-		wlansap_set_stop_bss_inprogress(
-			WLAN_HDD_GET_SAP_CTX_PTR(pAdapter), false);
-
 		/*BSS stopped, clear the active sessions for this device mode*/
 		cds_decr_session_set_pcl(pAdapter->device_mode,
 						pAdapter->sessionId);

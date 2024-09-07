@@ -211,6 +211,7 @@ struct dsi_ctrl_interrupts {
  *                          dsi controller and run only dsi controller.
  * @null_insertion_enabled:  A boolean property to allow dsi controller to
  *                           insert null packet.
+ * @modeupdated:	  Boolean to send new roi if mode is updated.
  */
 struct dsi_ctrl {
 	struct platform_device *pdev;
@@ -247,7 +248,7 @@ struct dsi_ctrl {
 	u32 cmd_buffer_iova;
 	u32 cmd_len;
 	void *vaddr;
-	u32 secure_mode;
+	bool secure_mode;
 
 	/* Debug Information */
 	struct dentry *debugfs_root;
@@ -258,6 +259,7 @@ struct dsi_ctrl {
 
 	bool phy_isolation_enabled;
 	bool null_insertion_enabled;
+	bool modeupdated;
 };
 
 /**
@@ -547,16 +549,6 @@ int dsi_ctrl_set_cmd_engine_state(struct dsi_ctrl *dsi_ctrl,
 				  enum dsi_engine_state state);
 
 /**
- * dsi_ctrl_validate_host_state() - validate DSI ctrl host state
- * @dsi_ctrl:            DSI Controller handle.
- *
- * Validate DSI cotroller host state
- *
- * Return: boolean indicating whether host is not initalized.
- */
-bool dsi_ctrl_validate_host_state(struct dsi_ctrl *dsi_ctrl);
-
-/**
  * dsi_ctrl_set_vid_engine_state() - set video engine state
  * @dsi_ctrl:            DSI Controller handle.
  * @state:               Engine state.
@@ -721,13 +713,6 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl, u32 cmd_len,
 void dsi_ctrl_isr_configure(struct dsi_ctrl *dsi_ctrl, bool enable);
 
 /**
- * dsi_ctrl_mask_error_status_interrupts() - API to mask dsi ctrl error status
- *                                           interrupts
- * @dsi_ctrl:              DSI controller handle.
- */
-void dsi_ctrl_mask_error_status_interrupts(struct dsi_ctrl *dsi_ctrl);
-
-/**
  * dsi_ctrl_irq_update() - Put a irq vote to process DSI error
  *				interrupts at any time.
  * @dsi_ctrl:              DSI controller handle.
@@ -740,12 +725,5 @@ void dsi_ctrl_irq_update(struct dsi_ctrl *dsi_ctrl, bool enable);
  */
 int dsi_ctrl_get_host_engine_init_state(struct dsi_ctrl *dsi_ctrl,
 		bool *state);
-
-/**
- * dsi_ctrl_wait_for_cmd_mode_mdp_idle() - Wait for command mode engine not to
- *				     be busy sending data from display engine.
- * @dsi_ctrl:                     DSI controller handle.
- */
-int dsi_ctrl_wait_for_cmd_mode_mdp_idle(struct dsi_ctrl *dsi_ctrl);
 
 #endif /* _DSI_CTRL_H_ */

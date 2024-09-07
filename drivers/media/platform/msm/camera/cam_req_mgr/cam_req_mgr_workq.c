@@ -53,13 +53,11 @@ end:
 	return task;
 }
 
-static void cam_req_mgr_workq_put_task(struct crm_workq_task *task)
+static void cam_req_mgr_workq_put_task_locked(struct crm_workq_task *task)
 {
 	struct cam_req_mgr_core_workq *workq =
 		(struct cam_req_mgr_core_workq *)task->parent;
-	unsigned long flags = 0;
 
-	WORKQ_ACQUIRE_LOCK(workq, flags);
 	list_del_init(&task->entry);
 	task->cancel = 0;
 	task->process_cb = NULL;
@@ -67,6 +65,16 @@ static void cam_req_mgr_workq_put_task(struct crm_workq_task *task)
 	list_add_tail(&task->entry,
 		&workq->task.empty_head);
 	atomic_add(1, &workq->task.free_cnt);
+}
+
+static void cam_req_mgr_workq_put_task(struct crm_workq_task *task)
+{
+	struct cam_req_mgr_core_workq *workq =
+		(struct cam_req_mgr_core_workq *)task->parent;
+	unsigned long flags = 0;
+
+	WORKQ_ACQUIRE_LOCK(workq, flags);
+	cam_req_mgr_workq_put_task_locked(task);
 	WORKQ_RELEASE_LOCK(workq, flags);
 }
 
@@ -131,20 +139,23 @@ void crm_workq_clear_q(struct cam_req_mgr_core_workq *workq)
 {
 	int32_t                 i = CRM_TASK_PRIORITY_0;
 	struct crm_workq_task  *task, *task_save;
+	unsigned long                  flags = 0;
 
 	CAM_DBG(CAM_CRM, "pending_cnt %d",
 		atomic_read(&workq->task.pending_cnt));
 
 	while (i < CRM_TASK_PRIORITY_MAX) {
+		WORKQ_ACQUIRE_LOCK(workq, flags);
 		if (!list_empty(&workq->task.process_head[i])) {
 			list_for_each_entry_safe(task, task_save,
 				&workq->task.process_head[i], entry) {
-				cam_req_mgr_workq_put_task(task);
+				cam_req_mgr_workq_put_task_locked(task);
 				CAM_WARN(CAM_CRM, "flush task %pK, %d, cnt %d",
 					task, i, atomic_read(
 					&workq->task.free_cnt));
 			}
 		}
+		WORKQ_RELEASE_LOCK(workq, flags);
 		i++;
 	}
 }

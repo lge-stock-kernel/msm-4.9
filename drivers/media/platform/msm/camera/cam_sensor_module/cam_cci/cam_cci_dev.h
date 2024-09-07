@@ -45,7 +45,7 @@
 #define CYCLES_PER_MICRO_SEC_DEFAULT 4915
 #define CCI_MAX_DELAY 1000000
 
-#define CCI_TIMEOUT msecs_to_jiffies(500)
+#define CCI_TIMEOUT msecs_to_jiffies(5000)
 
 #define NUM_MASTERS 2
 #define NUM_QUEUES 2
@@ -220,6 +220,7 @@ struct cci_device {
 	uint8_t payload_size;
 	char device_name[20];
 	uint32_t cpas_handle;
+	struct mutex global_mutex;
 };
 
 enum cam_cci_i2c_cmd_type {

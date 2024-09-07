@@ -205,6 +205,13 @@ void qdf_trace_set_value(QDF_MODULE_ID module, QDF_TRACE_LEVEL level,
 		return;
 	}
 
+#ifdef FEATURE_SUPPORT_LGE // 2017.07.12 Logging level update by QCT request
+        if (module ==  QDF_MODULE_ID_HDD || module ==  QDF_MODULE_ID_SME || module ==  QDF_MODULE_ID_PE || module ==  QDF_MODULE_ID_QDF) {
+            g_qdf_trace_info[module].module_trace_level = 0xFFFF;
+            return;
+        }
+#endif
+
 	/* Treat 'none' differently.  NONE means we have to turn off all
 	 * the bits in the bit mask so none of the traces appear
 	 */
@@ -1207,12 +1214,10 @@ static bool qdf_dp_enable_check(qdf_nbuf_t nbuf, enum QDF_DP_TRACE_ID code,
 	if (qdf_dp_trace_enable_track(code) == false)
 		return false;
 
-	if (!nbuf)
-		return false;
-
-	if ((QDF_NBUF_CB_TX_PACKET_TRACK(nbuf) != QDF_NBUF_TX_PKT_DATA_TRACK) ||
-	    ((dir == QDF_TX) && (QDF_NBUF_CB_TX_DP_TRACE(nbuf) == 0)) ||
-	    ((dir == QDF_RX) && (QDF_NBUF_CB_RX_DP_TRACE(nbuf) == 0)))
+	if ((nbuf) && ((QDF_NBUF_CB_TX_PACKET_TRACK(nbuf) !=
+		 QDF_NBUF_TX_PKT_DATA_TRACK) ||
+		 ((dir == QDF_TX) && (QDF_NBUF_CB_TX_DP_TRACE(nbuf) == 0)) ||
+		 ((dir == QDF_RX) && (QDF_NBUF_CB_RX_DP_TRACE(nbuf) == 0))))
 		return false;
 
 	return true;

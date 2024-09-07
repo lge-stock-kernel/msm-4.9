@@ -3,7 +3,7 @@
  *
  * This code is based on drivers/scsi/ufs/ufshcd.c
  * Copyright (C) 2011-2013 Samsung India Software Operations
- * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
  *
  * Authors:
  *	Santosh Yaraganavi <santosh.sy@samsung.com>
@@ -48,6 +48,10 @@
 #include "ufs_quirks.h"
 #include "ufs-debugfs.h"
 #include "ufs-qcom.h"
+
+#ifdef CONFIG_MACH_LGE
+#include "ufsdbg-print.h"
+#endif
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ufs.h>
@@ -658,7 +662,7 @@ static void __ufshcd_cmd_log(struct ufs_hba *hba, char *str, char *cmd_type,
 
 	entry.str = str;
 	entry.lba = lba;
-	entry->cmd_id = cmd_id;
+	entry.cmd_id = cmd_id;
 	entry.transfer_len = transfer_len;
 	entry.doorbell = ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL);
 	entry.tag = tag;
@@ -759,8 +763,14 @@ static void ufshcd_print_uic_err_hist(struct ufs_hba *hba,
 
 		if (err_hist->reg[p] == 0)
 			continue;
+
+#ifdef CONFIG_MACH_LGE
+		print_ufs_error_spec(hba, err_name, err_hist->reg[p],
+			ktime_to_us(err_hist->tstamp[p]), i);
+#else
 		dev_err(hba->dev, "%s[%d] = 0x%x at %lld us", err_name, i,
 			err_hist->reg[p], ktime_to_us(err_hist->tstamp[p]));
+#endif
 	}
 }
 
@@ -3825,6 +3835,11 @@ int ufshcd_map_desc_id_to_length(struct ufs_hba *hba,
 	case QUERY_DESC_IDN_STRING:
 		*desc_len = QUERY_DESC_MAX_SIZE;
 		break;
+#ifdef CONFIG_UFS_LGE_FEATURE
+	case QUERY_DESC_IDN_DEVICE_HEALTH:
+		*desc_len = hba->desc_size.health_desc;
+		break;
+#endif
 	case QUERY_DESC_IDN_RFU_0:
 	case QUERY_DESC_IDN_RFU_1:
 		*desc_len = 0;
@@ -3927,17 +3942,53 @@ static inline int ufshcd_read_desc(struct ufs_hba *hba,
 	return ufshcd_read_desc_param(hba, desc_id, desc_index, 0, buf, size);
 }
 
+#ifdef CONFIG_UFS_LGE_FEATURE
+int ufshcd_read_power_desc(struct ufs_hba *hba,
+					 u8 *buf,
+					 u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_POWER, 0, buf, size);
+}
+#else
 static inline int ufshcd_read_power_desc(struct ufs_hba *hba,
 					 u8 *buf,
 					 u32 size)
 {
 	return ufshcd_read_desc(hba, QUERY_DESC_IDN_POWER, 0, buf, size);
 }
+#endif
 
 int ufshcd_read_device_desc(struct ufs_hba *hba, u8 *buf, u32 size)
 {
 	return ufshcd_read_desc(hba, QUERY_DESC_IDN_DEVICE, 0, buf, size);
 }
+
+#ifdef CONFIG_UFS_LGE_FEATURE
+int ufshcd_read_geo_desc(struct ufs_hba *hba, u8 *buf, u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_GEOMETRY, 0, buf, size);
+}
+
+int ufshcd_read_config_desc(struct ufs_hba *hba, u8 *buf, u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_CONFIGURAION, 0, buf, size);
+}
+
+int ufshcd_read_unit_desc(struct ufs_hba *hba, int u_index, u8 *buf, u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_UNIT, u_index, buf, size);
+}
+
+int ufshcd_read_inter_desc(struct ufs_hba *hba, u8 *buf, u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_INTERCONNECT, 0, buf, size);
+}
+
+int ufshcd_read_health_desc(struct ufs_hba *hba, u8 *buf, u32 size)
+{
+	return ufshcd_read_desc(hba, QUERY_DESC_IDN_DEVICE_HEALTH, 0, buf, size);
+}
+#endif
 
 /**
  * ufshcd_read_string_desc - read string descriptor
@@ -6498,6 +6549,7 @@ static void ufshcd_rls_handler(struct work_struct *work)
 	hba = container_of(work, struct ufs_hba, rls_work);
 	ufshcd_scsi_block_requests(hba);
 	pm_runtime_get_sync(hba->dev);
+	down_write(&hba->lock);
 	ret = ufshcd_wait_for_doorbell_clr(hba, U64_MAX);
 	if (ret) {
 		dev_err(hba->dev,
@@ -6531,6 +6583,7 @@ static void ufshcd_rls_handler(struct work_struct *work)
 		hba->restore_needed = false;
 
 out:
+	up_write(&hba->lock);
 	ufshcd_scsi_unblock_requests(hba);
 	pm_runtime_put_sync(hba->dev);
 }
@@ -6573,7 +6626,17 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 						__func__, reg);
 					hba->full_init_linereset = true;
 				}
+#ifdef CONFIG_MACH_LGE
+                else{
+                  dev_err(hba->dev, "%s: LINERESET during cmd=0x%x, reg 0x%x\n",__func__, cmd->command, reg);
+                }
+#endif
 			}
+#ifdef CONFIG_MACH_LGE
+            else{
+              dev_err(hba->dev, "%s: LINERESET during cmd=NULL, reg 0x%x\n", __func__, reg);
+            }
+#endif
 			if (!hba->full_init_linereset)
 				schedule_work(&hba->rls_work);
 		}
@@ -7233,6 +7296,10 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	unsigned long flags;
 	int retries = MAX_HOST_RESET_RETRIES;
 
+#ifdef CONFIG_MACH_LGE
+	dev_err(hba->dev, "%s: [LGE] start reset to restore host and device\n", __func__);
+#endif
+
 	do {
 		err = ufshcd_detect_device(hba);
 	} while (err && --retries);
@@ -7861,6 +7928,13 @@ static void ufshcd_init_desc_sizes(struct ufs_hba *hba)
 		&hba->desc_size.geom_desc);
 	if (err)
 		hba->desc_size.geom_desc = QUERY_DESC_GEOMETRY_DEF_SIZE;
+
+#ifdef CONFIG_UFS_LGE_FEATURE
+	err = ufshcd_read_desc_length(hba, QUERY_DESC_IDN_DEVICE_HEALTH, 0,
+		&hba->desc_size.health_desc);
+	if (err)
+		hba->desc_size.health_desc = QUERY_DESC_DEVICE_HEALTH_MAX_SIZE;
+#endif
 }
 
 static void ufshcd_def_desc_sizes(struct ufs_hba *hba)
@@ -8309,6 +8383,9 @@ static int ufshcd_query_ioctl(struct ufs_hba *hba, u8 lun, void __user *buffer)
 		case QUERY_FLAG_IDN_PURGE_ENABLE:
 		case QUERY_FLAG_IDN_FPHYRESOURCEREMOVAL:
 		case QUERY_FLAG_IDN_BUSY_RTC:
+#ifdef CONFIG_UFS_LGE_FEATURE
+		case QUERY_FLAG_IDN_PERMANENT_DIS_FWUPT:
+#endif
 			break;
 		default:
 			goto out_einval;
@@ -8517,11 +8594,14 @@ static int ufshcd_config_vreg(struct device *dev,
 		struct ufs_vreg *vreg, bool on)
 {
 	int ret = 0;
-	struct regulator *reg = vreg->reg;
-	const char *name = vreg->name;
+	struct regulator *reg;
+	const char *name;
 	int min_uV, uA_load;
 
 	BUG_ON(!vreg);
+
+	reg = vreg->reg;
+	name = vreg->name;
 
 	if (regulator_count_voltages(reg) > 0) {
 		min_uV = on ? vreg->min_uV : 0;
@@ -9741,6 +9821,51 @@ static void ufshcd_add_spm_lvl_sysfs_nodes(struct ufs_hba *hba)
 		dev_err(hba->dev, "Failed to create sysfs for spm_lvl\n");
 }
 
+#ifdef CONFIG_UFSDBG_SYSFS_COMMON
+static ssize_t ufsdbg_health_desc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int err = 0;
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	int curr_len = 0;
+	int buff_len = QUERY_DESC_DEVICE_HEALTH_MAX_SIZE;
+	u8 desc_buf[QUERY_DESC_DEVICE_HEALTH_MAX_SIZE];
+
+	pm_runtime_get_sync(hba->dev);
+	err = ufshcd_read_health_desc(hba, desc_buf, buff_len);
+	pm_runtime_put_sync(hba->dev);
+
+	if (!err) {
+		curr_len = sprintf(buf, "bLength %d bDescriptorIDN %d bPreEOLInfo %d bDeviceLifeTimeEstA %d bDeviceLifeTimeEstB %d\n",
+			desc_buf[0], desc_buf[1], desc_buf[2], desc_buf[3], desc_buf[4]);
+	}
+
+	return curr_len;
+}
+
+static ssize_t ufsdbg_health_desc_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	return 0;
+}
+
+static void ufsdbg_add_health_desc_sysfs_node(struct ufs_hba *hba)
+{
+	hba->health_desc_attr.show = ufsdbg_health_desc_show;
+	hba->health_desc_attr.store = ufsdbg_health_desc_store;
+	sysfs_attr_init(&hba->health_desc_attr.attr);
+	hba->health_desc_attr.attr.name = "health_desc";
+	hba->health_desc_attr.attr.mode = S_IRUGO;
+	if (device_create_file(hba->dev, &hba->health_desc_attr))
+		dev_err(hba->dev, "Failed to create sysfs for health_desc_attr\n");
+}
+
+static void ufsdbg_add_sysfs_nodes(struct ufs_hba *hba)
+{
+	ufsdbg_add_health_desc_sysfs_node(hba);
+}
+#endif
+
 static inline void ufshcd_add_sysfs_nodes(struct ufs_hba *hba)
 {
 	ufshcd_add_rpm_lvl_sysfs_nodes(hba);
@@ -10429,6 +10554,47 @@ static void ufshcd_init_lanes_per_dir(struct ufs_hba *hba)
 		hba->lanes_per_direction = UFSHCD_DEFAULT_LANES_PER_DIRECTION;
 	}
 }
+
+#ifdef CONFIG_UFSDBG_SYSFS_COMMON
+#include <linux/proc_fs.h>
+static struct proc_dir_entry*	procfs_root;
+
+bool ufsdbg_procfs_create(struct ufs_hba* hba)
+{
+	#define UFSDBG_PROCFS_ROOT    "storage"	/* /proc/storage/ufs */
+	struct proc_dir_entry*	root;
+	char name[64];
+
+	if (!hba)
+		return false;
+
+	root = proc_mkdir(UFSDBG_PROCFS_ROOT, NULL);
+	if (NULL != root) {
+		sprintf(name, "/sys/devices/platform/soc/%s", dev_name(hba->dev));
+		if (!proc_symlink("ufs", root, name)) {
+			return false;
+		}
+	}
+
+	procfs_root = root;
+	return true;
+}
+
+bool ufsdbg_procfs_destroy(struct ufs_hba* hba)
+{
+	if (procfs_root)
+		proc_remove(procfs_root);
+
+	return true;
+}
+#endif
+
+#ifdef CONFIG_UFSDBG_TUNABLES
+#define IMPORT_TO_UFSHCD
+#include "ufsdbg-tunables.c"
+#undef IMPORT_TO_UFSHCD
+#endif
+
 /**
  * ufshcd_init - Driver initialization routine
  * @hba: per-adapter instance
@@ -10505,6 +10671,10 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	host->unique_id = host->host_no;
 	host->max_cmd_len = MAX_CDB_SIZE;
 	host->set_dbd_for_caching = 1;
+
+#ifdef CONFIG_SCSI_DEVICE_IDENTIFIER
+	host->by_ufs = 1;
+#endif
 
 	hba->max_pwr_info.is_valid = false;
 
@@ -10630,6 +10800,16 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	ufsdbg_add_debugfs(hba);
 
 	ufshcd_add_sysfs_nodes(hba);
+
+#ifdef CONFIG_UFSDBG_SYSFS_COMMON
+	ufsdbg_add_sysfs_nodes(hba);
+	ufsdbg_procfs_create(hba);
+#endif
+
+#ifdef CONFIG_UFSDBG_TUNABLES
+	ufsdbg_tunables_add_debugfs(hba, hba->debugfs_files.debugfs_root);
+#endif
+
 
 	return 0;
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -865,7 +865,7 @@ static void dci_process_ctrl_status(unsigned char *buf, int len, int token)
 	read_len += sizeof(struct diag_ctrl_dci_status);
 
 	for (i = 0; i < header->count; i++) {
-		if (read_len > (len - 2)) {
+		if (read_len > len) {
 			pr_err("diag: In %s, Invalid length len: %d\n",
 			       __func__, len);
 			return;
@@ -1422,10 +1422,6 @@ void extract_dci_ext_pkt(unsigned char *buf, int len, int data_source,
 		pr_err("diag: In %s buffer is NULL\n", __func__);
 		return;
 	}
-	if (len < (EXT_HDR_LEN + sizeof(uint8_t))) {
-		pr_err("diag: In %s invalid len: %d\n", __func__, len);
-		return;
-	}
 
 	version = *(uint8_t *)buf + 1;
 	if (version < EXT_HDR_VERSION)  {
@@ -1437,6 +1433,10 @@ void extract_dci_ext_pkt(unsigned char *buf, int len, int data_source,
 	pkt = buf + EXT_HDR_LEN;
 	pkt_cmd_code = *(uint8_t *)pkt;
 	len -= EXT_HDR_LEN;
+	if (len < 0) {
+		pr_err("diag: %s, Invalid length len: %d\n", __func__, len);
+		return;
+	}
 
 	switch (pkt_cmd_code) {
 	case LOG_CMD_CODE:
@@ -2302,8 +2302,8 @@ struct diag_dci_client_tbl *dci_lookup_client_entry_pid(int tgid)
 		pid_struct = find_get_pid(entry->tgid);
 		if (!pid_struct) {
 			DIAG_LOG(DIAG_DEBUG_DCI,
-				"diag: valid pid doesn't exist for pid = %d\n",
-				entry->tgid);
+			"diag: Exited pid (%d) doesn't match dci client of pid (%d)\n",
+			tgid, entry->tgid);
 			continue;
 		}
 		task_s = get_pid_task(pid_struct, PIDTYPE_PID);

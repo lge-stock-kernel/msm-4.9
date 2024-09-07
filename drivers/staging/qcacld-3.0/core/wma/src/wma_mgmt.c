@@ -1326,11 +1326,11 @@ QDF_STATUS wma_send_peer_assoc(tp_wma_handle wma,
 	intr->nss = cmd->peer_nss;
 	cmd->peer_phymode = phymode;
 	WMA_LOGI("%s: vdev_id %d associd %d peer_flags %x nss %d phymode %d ht_caps %x",
-		 __func__, cmd->vdev_id, cmd->peer_associd, cmd->peer_flags,
-		 cmd->peer_nss, cmd->peer_phymode, cmd->peer_ht_caps);
+		__func__, cmd->vdev_id, cmd->peer_associd, cmd->peer_flags,
+		cmd->peer_nss, cmd->peer_phymode, cmd->peer_ht_caps);
 	WMA_LOGD("%s:listen_intval %d max_mpdu %d rate_caps %x peer_caps %x",
-		 __func__, cmd->peer_listen_intval, cmd->peer_max_mpdu,
-		 cmd->peer_rate_caps, cmd->peer_caps);
+		__func__, cmd->peer_listen_intval, cmd->peer_max_mpdu,
+		cmd->peer_rate_caps, cmd->peer_caps);
 	WMA_LOGD("%s: peer_mpdu_density %d encr_type %d cmd->peer_vht_caps %x",
 		 __func__, cmd->peer_mpdu_density, params->encryptType,
 		 cmd->peer_vht_caps);
@@ -2913,7 +2913,7 @@ void wma_process_update_opmode(tp_wma_handle wma_handle,
 	}
 
 	WMA_LOGD("%s: opMode = %d, current_ch_width: %d", __func__,
-		 update_vht_opmode->opMode, ch_width);
+		update_vht_opmode->opMode, ch_width);
 
 	wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
 			WMI_PEER_CHWIDTH, update_vht_opmode->opMode,
@@ -3296,13 +3296,6 @@ int wma_process_rmf_frame(tp_wma_handle wma_handle,
 			cds_pkt_return_packet(rx_pkt);
 			return -EINVAL;
 		}
-	if (qdf_nbuf_len(wbuf) < (sizeof(*wh) + IEEE80211_CCMP_HEADERLEN +
-						IEEE80211_CCMP_MICLEN)) {
-		WMA_LOGE("Buffer length less than expected %d ",
-						(int)qdf_nbuf_len(wbuf));
-		cds_pkt_return_packet(rx_pkt);
-		return -EINVAL;
-	}
 
 		orig_hdr = (uint8_t *) qdf_nbuf_data(wbuf);
 		/* Pointer to head of CCMP header */

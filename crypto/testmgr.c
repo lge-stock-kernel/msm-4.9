@@ -23,6 +23,9 @@
 #include <crypto/aead.h>
 #include <crypto/hash.h>
 #include <crypto/skcipher.h>
+#ifdef CONFIG_CRYPTO_CCMODE
+#include <linux/cc_mode.h>
+#endif
 #include <linux/err.h>
 #include <linux/fips.h>
 #include <linux/module.h>
@@ -40,7 +43,7 @@ static bool notests;
 module_param(notests, bool, 0644);
 MODULE_PARM_DESC(notests, "disable crypto self-tests");
 
-#ifdef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
+#if defined (CONFIG_CRYPTO_MANAGER_DISABLE_TESTS) && !defined (CONFIG_CRYPTO_CCMODE)
 
 /* a perfect nop */
 int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
@@ -131,6 +134,9 @@ struct alg_test_desc {
 	int (*test)(const struct alg_test_desc *desc, const char *driver,
 		    u32 type, u32 mask);
 	int fips_allowed;	/* set if alg is allowed in fips mode */
+#ifdef CONFIG_CRYPTO_CCMODE
+	int cc_supported;	    /* set if alg is supported in cc mode */
+#endif
 
 	union {
 		struct aead_test_suite aead;
@@ -2427,6 +2433,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "cbc(aes)",
 		.test = alg_test_skcipher,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.cipher = {
 				.enc = {
@@ -2929,6 +2938,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "drbg_nopr_hmac_sha256",
 		.test = alg_test_drbg,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.drbg = {
 				.vecs = drbg_nopr_hmac_sha256_tv_template,
@@ -2995,6 +3007,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "drbg_pr_hmac_sha256",
 		.test = alg_test_drbg,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.drbg = {
 				.vecs = drbg_pr_hmac_sha256_tv_template,
@@ -3326,6 +3341,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "gcm(aes)",
 		.test = alg_test_aead,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.aead = {
 				.enc = {
@@ -3388,6 +3406,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "hmac(sha1)",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = hmac_sha1_tv_template,
@@ -3398,6 +3419,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "hmac(sha224)",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = hmac_sha224_tv_template,
@@ -3408,6 +3432,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "hmac(sha256)",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = hmac_sha256_tv_template,
@@ -3468,6 +3495,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "hmac(sha512)",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = hmac_sha512_tv_template,
@@ -3838,6 +3868,10 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "sha1",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
+		.fips_allowed = 1,
 		.suite = {
 			.hash = {
 				.vecs = sha1_tv_template,
@@ -3848,6 +3882,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "sha224",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = sha224_tv_template,
@@ -3858,6 +3895,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "sha256",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = sha256_tv_template,
@@ -3908,6 +3948,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "sha384",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = sha384_tv_template,
@@ -3918,6 +3961,9 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.alg = "sha512",
 		.test = alg_test_hash,
 		.fips_allowed = 1,
+#ifdef CONFIG_CRYPTO_CCMODE
+		.cc_supported = 1,
+#endif
 		.suite = {
 			.hash = {
 				.vecs = sha512_tv_template,
@@ -4135,7 +4181,11 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	int j;
 	int rc;
 
+#ifdef CONFIG_CRYPTO_CCMODE
+	if ((!cc_mode) && (!fips_enabled && notests)) {
+#else
 	if (!fips_enabled && notests) {
+#endif
 		printk_once(KERN_INFO "alg: self-tests disabled\n");
 		return 0;
 	}
@@ -4156,6 +4206,11 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 		if (fips_enabled && !alg_test_descs[i].fips_allowed)
 			goto non_fips_alg;
 
+#ifdef CONFIG_CRYPTO_CCMODE
+		if (cc_mode && !alg_test_descs[i].cc_supported)
+			goto non_cc_test_alg;
+#endif
+
 		rc = alg_test_cipher(alg_test_descs + i, driver, type, mask);
 		goto test_done;
 	}
@@ -4168,6 +4223,12 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	if (fips_enabled && ((i >= 0 && !alg_test_descs[i].fips_allowed) ||
 			     (j >= 0 && !alg_test_descs[j].fips_allowed)))
 		goto non_fips_alg;
+
+#ifdef CONFIG_CRYPTO_CCMODE
+	if (cc_mode && ((i >= 0 && !alg_test_descs[i].cc_supported) ||
+			     (j >= 0 && !alg_test_descs[j].cc_supported)))
+		goto non_cc_test_alg;
+#endif
 
 	rc = 0;
 	if (i >= 0)
@@ -4184,13 +4245,27 @@ test_done:
 	if (fips_enabled && !rc)
 		pr_info("alg: self-tests for %s (%s) passed\n", driver, alg);
 
+#ifdef CONFIG_CRYPTO_CCMODE
+	if (cc_mode && rc)
+		panic("[CCAudit] %s: %s alg self test failed in cc mode!\n", driver, alg);
+
+	if (cc_mode && !rc)
+		pr_info("[CCAudit] alg: self-tests for %s (%s) passed in cc mode\n", driver, alg);
+#endif
+
 	return rc;
 
 notest:
+#ifdef CONFIG_CRYPTO_CCMODE
+	printk(KERN_DEBUG "alg: No test for %s (%s)\n", alg, driver);
+#else
 	printk(KERN_INFO "alg: No test for %s (%s)\n", alg, driver);
+#endif
 	return 0;
 non_fips_alg:
 	return -EINVAL;
+non_cc_test_alg:
+	return 0;
 }
 
 #endif /* CONFIG_CRYPTO_MANAGER_DISABLE_TESTS */

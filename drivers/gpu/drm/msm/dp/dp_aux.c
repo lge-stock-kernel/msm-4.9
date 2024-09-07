@@ -400,6 +400,7 @@ static ssize_t dp_aux_transfer(struct drm_dp_aux *drm_aux,
 	int const aux_cmd_native_max = 16;
 	int const aux_cmd_i2c_max = 128;
 	int const retry_count = 5;
+	int const retry_count_1 = 5;
 	struct dp_aux_private *aux = container_of(drm_aux,
 		struct dp_aux_private, drm_aux);
 
@@ -444,7 +445,7 @@ static ssize_t dp_aux_transfer(struct drm_dp_aux *drm_aux,
 	}
 
 	ret = dp_aux_cmd_fifo_tx(aux, msg);
-	if ((ret < 0) && !atomic_read(&aux->aborted)) {
+	if ((ret < 0) && aux->native && !atomic_read(&aux->aborted)) {
 		aux->retry_cnt++;
 		if (!(aux->retry_cnt % retry_count))
 			aux->catalog->update_aux_cfg(aux->catalog,
@@ -452,6 +453,13 @@ static ssize_t dp_aux_transfer(struct drm_dp_aux *drm_aux,
 		aux->catalog->reset(aux->catalog);
 		goto unlock_exit;
 	} else if (ret < 0) {
+		aux->retry_cnt++;
+		if (!(aux->retry_cnt % retry_count_1))
+			aux->catalog->update_aux_cfg(aux->catalog,
+				aux->cfg, PHY_AUX_CFG1);
+		aux->catalog->reset(aux->catalog);
+		usleep_range(150000, 150000);
+		pr_info("%s %d non-native reset retry_cnt=%d !!\n", __func__, __LINE__, aux->retry_cnt);
 		goto unlock_exit;
 	}
 

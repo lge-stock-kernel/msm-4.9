@@ -145,8 +145,6 @@ struct dsi_display_clk_info {
  *		      index into the ctrl[MAX_DSI_CTRLS_PER_DISPLAY] array.
  * @cmd_master_idx:   The master controller for sending DSI commands to panel.
  * @video_master_idx: The master controller for enabling video engine.
- * @cached_clk_rate:  The cached DSI clock rate set dynamically by sysfs.
- * @clkrate_change_pending: Flag indicating the pending DSI clock re-enabling.
  * @clock_info:       Clock sourcing for DSI display.
  * @config:           DSI host configuration information.
  * @lane_map:         Lane mapping between DSI host and Panel.
@@ -165,7 +163,7 @@ struct dsi_display_clk_info {
  * @root:             Debugfs root directory
  * @misr_enable       Frame MISR enable/disable
  * @misr_frame_count  Number of frames to accumulate the MISR value
- * @esd_trigger       field indicating ESD trigger through debugfs
+ * @low_persist_enable low persist mode enable/disable.
  */
 struct dsi_display {
 	struct platform_device *pdev;
@@ -195,10 +193,6 @@ struct dsi_display {
 	u32 clk_master_idx;
 	u32 cmd_master_idx;
 	u32 video_master_idx;
-
-	/* dynamic DSI clock info*/
-	u32  cached_clk_rate;
-	atomic_t clkrate_change_pending;
 
 	struct dsi_display_clk_info clock_info;
 	struct dsi_host_config config;
@@ -231,12 +225,13 @@ struct dsi_display {
 
 	bool misr_enable;
 	u32 misr_frame_count;
-	u32 esd_trigger;
 	/* multiple dsi error handlers */
 	struct workqueue_struct *err_workq;
 	struct work_struct fifo_underflow_work;
 	struct work_struct fifo_overflow_work;
 	struct work_struct lp_rx_timeout_work;
+
+	bool low_persist_enable;
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
@@ -604,6 +599,11 @@ int dsi_display_pre_kickoff(struct dsi_display *display,
  *
  * Return: enum dsi_pixel_format type
  */
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+int dsi_display_post_kickoff(struct dsi_display *display);
+#endif
+
 enum dsi_pixel_format dsi_display_get_dst_format(void *display);
 
 #endif /* _DSI_DISPLAY_H_ */

@@ -458,9 +458,6 @@
 #define SIR_MAC_CISCO_OUI "\x00\x40\x96"
 #define SIR_MAC_CISCO_OUI_SIZE 3
 
-#define SIR_MAC_QCN_OUI_TYPE   "\x8c\xfd\xf0\x01"
-#define SIR_MAC_QCN_OUI_TYPE_SIZE  4
-
 /* min size of wme oui header: oui(3) + type + subtype + version */
 #define SIR_MAC_OUI_WME_HDR_MIN       6
 
@@ -998,10 +995,10 @@ struct merged_mac_rate_set {
 	uint8_t num_rates;
 	uint8_t rate[2 * SIR_MAC_RATESET_EID_MAX];
 };
-/* Reserve 1 byte for NULL character in the SSID name field to print in %s */
+
 typedef struct sSirMacSSid {
 	uint8_t length;
-	uint8_t ssId[SIR_MAC_MAX_SSID_LENGTH + 1];
+	uint8_t ssId[SIR_MAC_MAX_SSID_LENGTH];
 } qdf_packed tSirMacSSid;
 
 typedef struct sSirMacWpaInfo {

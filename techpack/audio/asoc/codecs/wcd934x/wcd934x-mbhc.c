@@ -1,4 +1,5 @@
-/* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -51,6 +52,11 @@
 #define TAVIL_MBHC_ZDET_CONST         (86 * 16384)
 #define TAVIL_MBHC_MOISTURE_RREF      R_24_KOHM
 
+#ifdef CONFIG_MACH_LGE
+static int micb_ena_status;
+static int micb_pullup_status;
+#endif
+
 static struct wcd_mbhc_register
 	wcd_mbhc_registers[WCD_MBHC_REG_FUNC_MAX] = {
 	WCD_MBHC_REGISTER("WCD_MBHC_L_DET_EN",
@@ -85,8 +91,6 @@ static struct wcd_mbhc_register
 			  WCD934X_MBHC_NEW_CTL_2, 0x03, 0, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_HS_COMP_RESULT",
 			  WCD934X_ANA_MBHC_RESULT_3, 0x08, 3, 0),
-	WCD_MBHC_REGISTER("WCD_MBHC_IN2P_CLAMP_STATE",
-			  WCD934X_ANA_MBHC_RESULT_3, 0x10, 4, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_MIC_SCHMT_RESULT",
 			  WCD934X_ANA_MBHC_RESULT_3, 0x20, 5, 0),
 	WCD_MBHC_REGISTER("WCD_MBHC_HPHL_SCHMT_RESULT",
@@ -382,6 +386,23 @@ static int tavil_mbhc_request_micbias(struct snd_soc_codec *codec,
 				      int micb_num, int req)
 {
 	int ret;
+#ifdef CONFIG_MACH_LGE
+    pr_info("[LGE MBHC] enter en_status=%d, pullup_status=%d, req=%d \n", micb_ena_status, micb_pullup_status, req);
+    if((req == MICB_ENABLE) || (req == MICB_DISABLE)) {
+        if(micb_ena_status == req)
+        {
+            pr_info("[LGE MBHC] micb ena count=%d, req=%d is already applied \n", micb_ena_status, req);
+            return 0;
+        }
+    }
+    if((req == MICB_PULLUP_ENABLE) || (req == MICB_PULLUP_DISABLE)) {
+        if(micb_pullup_status == req)
+        {
+            pr_info("[LGE MBHC] pullup count=%d, req=%d is already applied \n", micb_pullup_status, req);
+            return 0;
+        }
+    }
+#endif
 
 	/*
 	 * If micbias is requested, make sure that there
@@ -398,6 +419,13 @@ static int tavil_mbhc_request_micbias(struct snd_soc_codec *codec,
 	 */
 	if (req == MICB_DISABLE)
 		tavil_cdc_mclk_enable(codec, false);
+#ifdef CONFIG_MACH_LGE
+    if((req == MICB_ENABLE) || (req == MICB_DISABLE))
+        micb_ena_status = req;//2, 3
+    else if((req == MICB_PULLUP_ENABLE) || (req == MICB_PULLUP_DISABLE))
+        micb_pullup_status = req;//0, 1
+    pr_info("[LGE MBHC] exit en_status=%d, pullup_status=%d \n", micb_ena_status, micb_pullup_status);
+#endif
 
 	return ret;
 }
@@ -1078,7 +1106,6 @@ int tavil_mbhc_init(struct wcd934x_mbhc **mbhc, struct snd_soc_codec *codec,
 	struct wcd934x_mbhc *wcd934x_mbhc;
 	struct wcd_mbhc *wcd_mbhc;
 	int ret;
-	struct wcd9xxx_pdata *pdata;
 
 	wcd934x_mbhc = devm_kzalloc(codec->dev, sizeof(struct wcd934x_mbhc),
 				    GFP_KERNEL);
@@ -1098,14 +1125,6 @@ int tavil_mbhc_init(struct wcd934x_mbhc **mbhc, struct snd_soc_codec *codec,
 
 	/* Setting default mbhc detection logic to ADC for Tavil */
 	wcd_mbhc->mbhc_detection_logic = WCD_DETECTION_ADC;
-
-	pdata = dev_get_platdata(codec->dev->parent);
-	if (!pdata) {
-		dev_err(codec->dev, "%s: pdata pointer is NULL\n", __func__);
-		ret = -EINVAL;
-		goto err;
-	}
-	wcd_mbhc->micb_mv = pdata->micbias.micb2_mv;
 
 	ret = wcd_mbhc_init(wcd_mbhc, codec, &mbhc_cb,
 				&intr_ids, wcd_mbhc_registers,
@@ -1137,6 +1156,11 @@ int tavil_mbhc_init(struct wcd934x_mbhc **mbhc, struct snd_soc_codec *codec,
 		snd_soc_update_bits(codec, WCD934X_MBHC_NEW_CTL_1, 0x04, 0x04);
 		snd_soc_update_bits(codec, WCD934X_MBHC_CTL_BCS, 0x01, 0x01);
 	}
+
+#ifdef CONFIG_MACH_LGE
+    micb_ena_status = 3;
+    micb_pullup_status = 1;
+#endif
 
 	return 0;
 err:

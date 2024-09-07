@@ -810,8 +810,6 @@ struct rq {
 	u8 curr_table;
 	int prev_top;
 	int curr_top;
-	u64 last_cc_update;
-	u64 cycles;
 #endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
@@ -1860,7 +1858,7 @@ cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 		walt_load->prev_window_util = util;
 		walt_load->nl = nl;
 		walt_load->pl = pl;
-		walt_load->ws = rq->load_reported_window;
+		walt_load->ws = rq->window_start;
 	}
 
 	return (util >= capacity) ? capacity : util;
@@ -2308,8 +2306,7 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
 		(rq->load_reported_window == rq->window_start) &&
 		!(flags & exception_flags))
 		return;
-	if (!(flags & exception_flags))
-		rq->load_reported_window = rq->window_start;
+	rq->load_reported_window = rq->window_start;
 #endif
 
 	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
@@ -2384,6 +2381,7 @@ extern unsigned int max_load_scale_factor;
 extern unsigned int max_possible_capacity;
 extern unsigned int min_max_possible_capacity;
 extern unsigned int max_power_cost;
+extern unsigned int sched_init_task_load_windows;
 extern unsigned int up_down_migrate_scale_factor;
 extern unsigned int sysctl_sched_restrict_cluster_spill;
 extern unsigned int sched_pred_alert_load;

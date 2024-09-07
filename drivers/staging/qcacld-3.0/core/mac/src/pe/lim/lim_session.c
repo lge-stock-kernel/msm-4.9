@@ -541,7 +541,7 @@ pe_create_session(tpAniSirGlobal pMac, uint8_t *bssid, uint8_t *sessionId,
 	pe_init_pmf_comeback_timer(pMac, session_ptr, *sessionId);
 	session_ptr->deauthmsgcnt = 0;
 	session_ptr->disassocmsgcnt = 0;
-	session_ptr->ht_client_cnt = 0;
+	session_ptr->ht_client_cnt = 0;  // LGE_CHANGE_START, (17.06.28), neo-wifi@lge.com, Assoc response 2x2 in SAP mode, QCT Case 03003077
 	/* following is invalid value since seq number is 12 bit */
 	session_ptr->prev_auth_seq_num = 0xFFFF;
 

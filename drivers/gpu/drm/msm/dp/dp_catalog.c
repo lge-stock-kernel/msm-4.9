@@ -49,17 +49,17 @@
 #define DP_INTR_MASK2		(DP_INTERRUPT_STATUS2 << 2)
 
 static u8 const vm_pre_emphasis[4][4] = {
-	{0x00, 0x0B, 0x12, 0xFF},       /* pe0, 0 db */
-	{0x00, 0x0A, 0x12, 0xFF},       /* pe1, 3.5 db */
-	{0x00, 0x0C, 0xFF, 0xFF},       /* pe2, 6.0 db */
+	{0x00, 0x0B, 0x14, 0xFF},       /* pe0, 0 db */
+	{0x00, 0x0B, 0x12, 0xFF},       /* pe1, 3.5 db */
+	{0x00, 0x0B, 0xFF, 0xFF},       /* pe2, 6.0 db */
 	{0xFF, 0xFF, 0xFF, 0xFF}        /* pe3, 9.5 db */
 };
 
 /* voltage swing, 0.2v and 1.0v are not support */
 static u8 const vm_voltage_swing[4][4] = {
-	{0x07, 0x0F, 0x14, 0xFF}, /* sw0, 0.4v  */
-	{0x11, 0x1D, 0x1F, 0xFF}, /* sw1, 0.6 v */
-	{0x18, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
+	{0x07, 0x0F, 0x16, 0xFF}, /* sw0, 0.4v  */
+	{0x11, 0x1E, 0x1F, 0xFF}, /* sw1, 0.6 v */
+	{0x19, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
 	{0xFF, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
 };
 
@@ -251,7 +251,7 @@ static void dp_catalog_aux_update_cfg(struct dp_catalog_aux *aux,
 
 	current_index = cfg[type].current_index;
 	new_index = (current_index + 1) % cfg[type].cfg_cnt;
-	pr_debug("Updating %s from 0x%08x to 0x%08x\n",
+	pr_info("Updating %s from 0x%08x to 0x%08x\n",
 		dp_phy_aux_config_type_to_string(type),
 	cfg[type].lut[current_index], cfg[type].lut[new_index]);
 

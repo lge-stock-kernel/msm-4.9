@@ -652,6 +652,66 @@ static void use_inline_bio(struct dm_buffer *b, int rw, sector_t block,
 	submit_bio(&b->bio);
 }
 
+#ifdef CONFIG_LGE_DM_VERITY_RECOVERY
+void* dm_direct_read(sector_t block, struct dm_bufio_client *bufio)
+{
+	void* data = NULL;
+	unsigned block_size = bufio->block_size;
+	struct block_device *bdev = bufio->bdev;
+	gfp_t gfp_mask = GFP_NOIO | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN;
+
+	if (block_size <= PAGE_SIZE) {
+		data = (void*)__get_free_pages(gfp_mask, 0);
+	}
+	else {
+		// vmalloc case is not support yet. Now, UFS/eMMC block size is not greather than 4KB.
+		goto return_data;
+	}
+
+	if(data) {
+		struct bio bio;
+		struct bio_vec bio_vec;
+	    unsigned char sectors_per_block_bits = ffs(block_size) - 1 - SECTOR_SHIFT;
+
+		bio_init(&bio);
+		bio.bi_max_vecs = 1;
+		bio.bi_io_vec = &bio_vec;
+		bio.bi_max_vecs = DM_BUFIO_INLINE_VECS;
+		bio.bi_iter.bi_sector = block << sectors_per_block_bits;
+		bio.bi_bdev = bdev;
+
+		if (!bio_add_page(&bio, virt_to_page(data),
+				  PAGE_SIZE, virt_to_phys(data) & (PAGE_SIZE - 1))) {
+			free_pages((unsigned long)data, 0);
+			data = NULL;
+			goto return_data;
+		}
+
+		submit_bio_wait(&bio);
+		printk(KERN_ERR "%s block:%d, data:%p(page:%p)(phys:%p)\n",__func__, (int)block, data, (void*)virt_to_page(data), (void*)virt_to_phys(data));
+	}
+return_data:
+	return data;
+}
+
+void dm_direct_free(void* data)
+{
+	printk(KERN_ERR "%s data:%p(page:%p)(phys:%p)\n",__func__, data, (void*)virt_to_page(data), (void*)virt_to_phys(data));
+	if(data)
+		free_pages((unsigned long)data, 0);
+}
+
+void dm_verity_recovery_lock(struct dm_bufio_client *bufio)
+{
+	dm_bufio_lock(bufio);
+}
+
+void dm_verity_recovery_unlock(struct dm_bufio_client *bufio)
+{
+	dm_bufio_unlock(bufio);
+}
+#endif
+
 static void submit_io(struct dm_buffer *b, int rw, sector_t block,
 		      bio_end_io_t *end_io)
 {
@@ -822,12 +882,14 @@ enum new_flag {
 static struct dm_buffer *__alloc_buffer_wait_no_callback(struct dm_bufio_client *c, enum new_flag nf)
 {
 	struct dm_buffer *b;
+	bool tried_noio_alloc = false;
 
 	/*
 	 * dm-bufio is resistant to allocation failures (it just keeps
 	 * one buffer reserved in cases all the allocations fail).
 	 * So set flags to not try too hard:
-	 *	GFP_NOIO: don't recurse into the I/O layer
+	 *	GFP_NOWAIT: don't wait; if we need to sleep we'll release our
+	 *		    mutex and wait ourselves.
 	 *	__GFP_NORETRY: don't retry and rather return failure
 	 *	__GFP_NOMEMALLOC: don't use emergency reserves
 	 *	__GFP_NOWARN: don't print a warning in case of failure
@@ -837,13 +899,22 @@ static struct dm_buffer *__alloc_buffer_wait_no_callback(struct dm_bufio_client 
 	 */
 	while (1) {
 		if (dm_bufio_cache_size_latch != 1) {
-			b = alloc_buffer(c, GFP_NOIO | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN);
+			b = alloc_buffer(c, GFP_NOWAIT | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN);
 			if (b)
 				return b;
 		}
 
 		if (nf == NF_PREFETCH)
 			return NULL;
+
+		if (dm_bufio_cache_size_latch != 1 && !tried_noio_alloc) {
+			dm_bufio_unlock(c);
+			b = alloc_buffer(c, GFP_NOIO | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN);
+			dm_bufio_lock(c);
+			if (b)
+				return b;
+			tried_noio_alloc = true;
+		}
 
 		if (!list_empty(&c->reserved_buffers)) {
 			b = list_entry(c->reserved_buffers.next,
@@ -1592,9 +1663,7 @@ dm_bufio_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 	unsigned long count;
 
 	c = container_of(shrink, struct dm_bufio_client, shrinker);
-	if (sc->gfp_mask & __GFP_FS)
-		dm_bufio_lock(c);
-	else if (!dm_bufio_trylock(c))
+	if (!dm_bufio_trylock(c))
 		return 0;
 
 	count = c->n_buffers[LIST_CLEAN] + c->n_buffers[LIST_DIRTY];

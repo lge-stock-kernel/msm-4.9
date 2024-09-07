@@ -2946,9 +2946,9 @@ bool cds_is_connection_in_progress(uint8_t *session_id,
 			hdd_sta_ctx =
 				WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 			if ((eConnectionState_Associated ==
-			    hdd_sta_ctx->conn_info.connState)
-			    && sme_is_sta_key_exchange_in_progress(
-			    hdd_ctx->hHal, adapter->sessionId)) {
+				hdd_sta_ctx->conn_info.connState)
+				&& (false ==
+				hdd_sta_ctx->conn_info.uIsAuthenticated)) {
 				sta_mac = (uint8_t *)
 					&(adapter->macAddressCurrent.bytes[0]);
 				cds_debug("client " MAC_ADDRESS_STR
@@ -5582,11 +5582,6 @@ QDF_STATUS cds_get_pcl(enum cds_con_mode mode,
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
 		cds_err("HDD context is NULL");
-		return status;
-	}
-
-	if (mode >= CDS_MAX_NUM_OF_MODE) {
-		cds_err("requested mode:%d is not supported", mode);
 		return status;
 	}
 
@@ -10233,6 +10228,22 @@ void cds_dump_connection_status_info(void)
 				conc_connection_list[i].chain_mask,
 				conc_connection_list[i].original_nss,
 				conc_connection_list[i].bw);
+
+#ifdef FEATURE_SUPPORT_LGE
+// LGE_CHANGE_S,, 2017.03-07, neo-wifi@lge.com, Add DBS assign log
+            printk("[LGE-WIFI] %d-th, use:%d vdev:%d mode:%d mac:%d chan:%d orig chainmask:%d orig nss:%d bw:%d\n",
+                                i, conc_connection_list[i].in_use,
+                                conc_connection_list[i].vdev_id,
+                                conc_connection_list[i].mode,
+                                conc_connection_list[i].mac,
+                                conc_connection_list[i].chan,
+                                conc_connection_list[i].chain_mask,
+                                conc_connection_list[i].original_nss,
+                                conc_connection_list[i].bw);
+// LGE_CHANGE_E, 2017.03-07, neo-wifi@lge.com, Add DBS assign log
+#endif
+
+
 	}
 	qdf_mutex_release(&cds_ctx->qdf_conc_list_lock);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -140,6 +140,9 @@ struct drm_panel_esd_config {
 	u32 groups;
 };
 
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+#include "../lge/lge_dsi_panel_def.h"
+#endif
 struct dsi_panel {
 	const char *name;
 	struct device_node *panel_of_node;
@@ -178,8 +181,10 @@ struct dsi_panel {
 
 	char dsc_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
-
 	bool sync_broadcast_en;
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	struct lge_dsi_panel lge;
+#endif
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -205,8 +210,6 @@ static inline void dsi_panel_release_panel_lock(struct dsi_panel *panel)
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				int topology_override);
-
-int dsi_panel_trigger_esd_attack(struct dsi_panel *panel);
 
 void dsi_panel_put(struct dsi_panel *panel);
 
@@ -241,6 +244,10 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel);
 int dsi_panel_set_lp1(struct dsi_panel *panel);
 
 int dsi_panel_set_lp2(struct dsi_panel *panel);
+
+int dsi_panel_set_low_persist_mode_disable(struct dsi_panel *panel);
+
+int dsi_panel_set_low_persist_mode_enable(struct dsi_panel *panel);
 
 int dsi_panel_set_nolp(struct dsi_panel *panel);
 

@@ -309,7 +309,6 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	if (bridge->encoder && bridge->encoder->crtc &&
 			crtc_state->crtc) {
-
 		convert_to_dsi_mode(&crtc_state->crtc->state->mode,
 							&cur_dsi_mode);
 		rc = dsi_display_validate_mode_vrr(c_bridge->display,
@@ -320,11 +319,14 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 		cur_mode = crtc_state->crtc->mode;
 
+		SDE_EVT32(drm_mode_equal(&cur_mode, adjusted_mode), dsi_mode.dsi_mode_flags,
+				crtc_state->active_changed, display->is_cont_splash_enabled);
+
 		/* No DMS/VRR when drm pipeline is changing */
 		if (!drm_mode_equal(&cur_mode, adjusted_mode) &&
-			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR)) &&
-			(!crtc_state->active_changed ||
-			 display->is_cont_splash_enabled))
+				(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR)) &&
+				(!crtc_state->active_changed ||
+				display->is_cont_splash_enabled))
 			dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
 	}
 
@@ -707,6 +709,13 @@ int dsi_conn_post_kickoff(struct drm_connector *connector)
 
 		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_VRR;
 	}
+
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	rc = dsi_display_post_kickoff(display);
+	if (rc) {
+		pr_err("failed new post kickoff\n");
+	}
+#endif
 
 	return 0;
 }

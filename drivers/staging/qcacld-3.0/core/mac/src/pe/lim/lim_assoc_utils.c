@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -1396,25 +1396,6 @@ tSirRetStatus lim_populate_vht_mcs_set(tpAniSirGlobal mac_ctx,
 			VHT_TX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
 		rates->vhtRxHighestDataRate =
 			VHT_RX_HIGHEST_SUPPORTED_DATA_RATE_1_1;
-		if (!session_entry->ch_width &&
-				!mac_ctx->roam.configParam.enable_vht20_mcs9 &&
-				((rates->vhtRxMCSMap & VHT_1x1_MCS_MASK) ==
-				 VHT_1x1_MCS9_MAP)) {
-			DISABLE_VHT_MCS_9(rates->vhtRxMCSMap,
-					NSS_1x1_MODE);
-			DISABLE_VHT_MCS_9(rates->vhtTxMCSMap,
-					NSS_1x1_MODE);
-		}
-	} else {
-		if (!session_entry->ch_width &&
-				!mac_ctx->roam.configParam.enable_vht20_mcs9 &&
-				((rates->vhtRxMCSMap & VHT_2x2_MCS_MASK) ==
-				 VHT_2x2_MCS9_MAP)) {
-			DISABLE_VHT_MCS_9(rates->vhtRxMCSMap,
-					NSS_2x2_MODE);
-			DISABLE_VHT_MCS_9(rates->vhtTxMCSMap,
-					NSS_2x2_MODE);
-		}
 	}
 
 	if ((peer_vht_caps == NULL) || (!peer_vht_caps->present))
@@ -2199,6 +2180,33 @@ lim_add_sta(tpAniSirGlobal mac_ctx,
 		add_sta_params->vhtCapable =
 			sta_ds->mlmStaContext.vhtCapability;
 	}
+
+// LGE_CHANGE_START, (17.06.28), neo-wifi@lge.com, Assoc response 2x2 in SAP mode, QCT Case 03003077
+    /*
+     * 2G-AS platform: SAP associates with HT (11n)clients as 2x1 in 2G and
+     * 2X2 in 5G
+     * Non-2G-AS platform: SAP associates with HT (11n) clients as 2X2 in 2G
+     * and 5G; and disable async dbs scan when HT client connects
+     * 5G-AS: Don't care
+     */
+    if (LIM_IS_AP_ROLE(session_entry) &&
+        (STA_ENTRY_PEER == sta_ds->staType) &&
+        !add_sta_params->vhtCapable &&
+        (session_entry->nss == 2)) {
+        session_entry->ht_client_cnt++;
+        if ((session_entry->ht_client_cnt == 1) &&
+            !(mac_ctx->lteCoexAntShare &&
+            IS_24G_CH(session_entry->currentOperChannel))) {
+            pe_debug("setting SMPS intolrent vdev_param");
+            wma_cli_set_command(session_entry->smeSessionId,
+                (int)WMI_VDEV_PARAM_SMPS_INTOLERANT,
+                1, VDEV_CMD);
+        }
+    }
+// LGE_CHANGE_END, (17.06.28), neo-wifi@lge.com, Assoc response 2x2 in SAP mode, QCT Case 03003077
+
+
+
 #ifdef FEATURE_WLAN_TDLS
 	/* SystemRole shouldn't be matter if staType is TDLS peer */
 	else if (STA_ENTRY_TDLS_PEER == sta_ds->staType) {

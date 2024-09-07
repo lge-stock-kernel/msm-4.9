@@ -242,6 +242,8 @@ enum dsi_dfps_type {
  * @DSI_CMD_SET_ROI:			   Panel ROI update
  * @DSI_CMD_SET_TIMING_SWITCH:             Timing switch
  * @DSI_CMD_SET_POST_TIMING_SWITCH:        Post timing switch
+ * @DSI_CMD_SET_LOW_PERSIST_MODE_OFF:      low persistence mode off
+ * @DSI_CMD_SET_LOW_PERSIST_MODE_ON:       low persistence mode on
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -266,6 +268,13 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_ROI,
 	DSI_CMD_SET_TIMING_SWITCH,
 	DSI_CMD_SET_POST_TIMING_SWITCH,
+	DSI_CMD_SET_LOW_PERSIST_MODE_OFF,
+	DSI_CMD_SET_LOW_PERSIST_MODE_ON,
+	DSI_CMD_READ_POWER_MODE,
+	DSI_CMD_READ_TE_SIGNAL_MODE,
+#if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
+	DSI_CMD_SET_ON_WITH_APO,
+#endif
 	DSI_CMD_SET_MAX
 };
 
@@ -322,6 +331,7 @@ enum dsi_video_traffic_mode {
 struct dsi_cmd_desc {
 	struct mipi_dsi_msg msg;
 	bool last_command;
+//	bool read_command;
 	u32  post_wait_ms;
 };
 

@@ -3157,11 +3157,6 @@ static int wma_pdev_set_hw_mode_resp_evt_handler(void *handle,
 			QDF_BUG(0);
 			goto fail;
 		}
-		if (vdev_id >= wma->max_bssid) {
-			WMA_LOGE("%s: vdev_id: %d is invalid, max_bssid: %d",
-					__func__, vdev_id, wma->max_bssid);
-			goto fail;
-		}
 		mac_id = WMA_PDEV_TO_MAC_MAP(vdev_mac_entry[i].pdev_id);
 
 		WMA_LOGE("%s: vdev_id:%d mac_id:%d",
@@ -3221,13 +3216,7 @@ void wma_process_pdev_hw_mode_trans_ind(void *handle,
 {
 	uint32_t i;
 	tp_wma_handle wma = (tp_wma_handle) handle;
-	if (fixed_param->num_vdev_mac_entries > MAX_VDEV_SUPPORTED) {
-		WMA_LOGE("Number of Vdev mac entries %d exceeded"
-			 " max vdev supported %d",
-			 fixed_param->num_vdev_mac_entries,
-			 MAX_VDEV_SUPPORTED);
-		return;
-	}
+
 	hw_mode_trans_ind->old_hw_mode_index = fixed_param->old_hw_mode_index;
 	hw_mode_trans_ind->new_hw_mode_index = fixed_param->new_hw_mode_index;
 	hw_mode_trans_ind->num_vdev_mac_entries =
@@ -3248,11 +3237,6 @@ void wma_process_pdev_hw_mode_trans_ind(void *handle,
 			WMA_LOGE("%s: soc level id received for mac id)",
 					__func__);
 			QDF_BUG(0);
-			return;
-		}
-		if (vdev_id >= wma->max_bssid) {
-			WMA_LOGE("%s: vdev_id: %d is invalid, max_bssid: %d",
-					__func__, vdev_id, wma->max_bssid);
 			return;
 		}
 
@@ -8142,7 +8126,7 @@ QDF_STATUS wma_mc_process_msg(void *cds_context, cds_msg_t *msg)
 		qdf_mem_free(msg->bodyptr);
 		break;
 	case WMA_CONF_HW_FILTER: {
-		struct wmi_hw_filter_req_params *req = msg->bodyptr;
+		struct hw_filter_request *req = msg->bodyptr;
 
 		qdf_status = wma_conf_hw_filter_mode(wma_handle, req);
 		break;
